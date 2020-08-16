@@ -73,15 +73,33 @@ class MultiScale(nn.Module):
         lossvalue = 0
         epevalue = 0
 
+        # lburner - fix memory usage bug according to GitHub issue
+        # https://github.com/NVIDIA/flownet2-pytorch/issues/146#issuecomment-491171289
+
+        # if type(output) is tuple:
+        #     target = self.div_flow * target
+        #     for i, output_ in enumerate(output):
+        #         target_ = self.multiScales[i](target)
+        #         epevalue += self.loss_weights[i]*EPE(output_, target_)
+        #         lossvalue += self.loss_weights[i]*self.loss(output_, target_)
+        #     return [lossvalue, epevalue]
+        # else:
+        #     epevalue += EPE(output, target)
+        #     lossvalue += self.loss(output, target)
+        #     return  [lossvalue, epevalue]
+
         if type(output) is tuple:
             target = self.div_flow * target
             for i, output_ in enumerate(output):
                 target_ = self.multiScales[i](target)
-                epevalue += self.loss_weights[i]*EPE(output_, target_)
-                lossvalue += self.loss_weights[i]*self.loss(output_, target_)
+                if i == 0:
+                    epevalue = EPE(output_, target_) * self.loss_weights[i]
+                    lossvalue = self.loss(output_, target_) * self.loss_weights[i]
+                else:
+                    epevalue += EPE(output_, target_) * self.loss_weights[i]
+                    lossvalue += self.loss(output_, target_) * self.loss_weights[i]
             return [lossvalue, epevalue]
         else:
-            epevalue += EPE(output, target)
-            lossvalue += self.loss(output, target)
+            epevalue = EPE(output, target)
+            lossvalue = self.loss(output, target)
             return  [lossvalue, epevalue]
-

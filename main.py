@@ -251,7 +251,7 @@ if __name__ == '__main__':
             model.eval()
             title = 'Validating Epoch {}'.format(epoch)
             args.validation_n_batches = np.inf if args.validation_n_batches < 0 else args.validation_n_batches
-            progress = tqdm(tools.IteratorTimer(data_loader), ncols=100, total=np.minimum(len(data_loader), args.validation_n_batches), leave=True, position=offset, desc=title)
+            progress = tqdm(tools.IteratorTimer(data_loader), ncols=120, total=np.minimum(len(data_loader), args.validation_n_batches), leave=True, position=offset, desc=title)
         else:
             model.train()
             title = 'Training Epoch {}'.format(epoch)
@@ -273,7 +273,11 @@ if __name__ == '__main__':
             loss_values = [v.item() for v in losses]
 
             # gather loss_labels, direct return leads to recursion limit error as it looks for variables to gather'
-            loss_labels = list(model.module.loss.loss_labels)
+            # lburner - fix upstream bug where multiple labels are wrapped in an extra list
+            if type(model.module.loss.loss_labels[0]) is list:
+                loss_labels = list(model.module.loss.loss_labels[0])
+            else:
+                loss_labels = list(model.module.loss.loss_labels)
 
             assert not np.isnan(total_loss)
 
