@@ -257,7 +257,7 @@ class ChairsSDHom(data.Dataset):
 
     image1 = sorted( glob( join(root, dstype, 't0/*.png') ) )
     image2 = sorted( glob( join(root, dstype, 't1/*.png') ) )
-    self.flow_list = sorted( glob( join(root, dstype, 'flow/*.flo') ) )
+    self.flow_list = sorted( glob( join(root, dstype, 'flow/*.pfm') ) )
 
     assert (len(image1) == len(self.flow_list))
 

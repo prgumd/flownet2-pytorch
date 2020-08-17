@@ -13,6 +13,6 @@ def read_gen(file_name):
             return im
     elif ext == '.bin' or ext == '.raw':
         return np.load(file_name)
-    elif ext == '.flo':
+    elif ext == '.flo' or ext == '.pfm' or ext == '.PFM':
         return flow_utils.readFlow(file_name).astype(np.float32)
     return []
