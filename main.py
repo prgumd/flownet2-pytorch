@@ -7,11 +7,12 @@ from torch.autograd import Variable
 from tensorboardX import SummaryWriter
 
 import argparse, os, sys, subprocess
-import setproctitle, colorama
+import colorama #import setproctitle
 import numpy as np
 from tqdm import tqdm
 from glob import glob
 from os.path import *
+from torchvision.transforms import ToTensor
 
 import models, losses, datasets
 from utils import flow_utils, tools
@@ -124,7 +125,7 @@ if __name__ == '__main__':
     print(('  Current Git Hash: {}\n'.format(args.current_hash)))
 
     # Change the title for `top` and `pkill` commands
-    setproctitle.setproctitle(args.save)
+    # setproctitle.setproctitle(args.save)
 
     # Dynamically load the dataset class with parameters passed in via "--argument_[param]=[value]" arguments
     with tools.TimerBlock("Initializing Datasets") as block:
@@ -171,10 +172,10 @@ if __name__ == '__main__':
             def forward(self, data, target, inference=False ):
                 output = self.model(data)
 
-                loss_values = self.loss(output, target)
+                loss_values = self.loss(output, target, data)
 
                 if not inference :
-                    return loss_values
+                    return loss_values, output
                 else :
                     return loss_values, output
 
@@ -266,7 +267,7 @@ if __name__ == '__main__':
                 data, target = [d.cuda(non_blocking=True) for d in data], [t.cuda(non_blocking=True) for t in target]
 
             optimizer.zero_grad() if not is_validate else None
-            losses = model(data[0], target[0])
+            losses, flow = model(data[0], target[0])
             losses = [torch.mean(loss_value) for loss_value in losses] 
             loss_val = losses[0] # Collect first loss for weight update
             total_loss += loss_val.item()
@@ -329,6 +330,13 @@ if __name__ == '__main__':
                 for i, key in enumerate(loss_labels):
                     logger.add_scalar('average batch ' + str(key), all_losses[:, i].mean(), global_iteration)
                     logger.add_histogram(str(key), all_losses[:, i], global_iteration)
+
+                flow = tuple(map(np.squeeze, flow_utils.flow_postprocess(flow)))
+                flow_rgb = list(map(flow_utils.flow2img, flow[0]))
+                data_ = data[0]
+                logger.add_image('train Input', flow_utils.tensor2array(data_[0,:,0,:,:]), global_iteration)
+                logger.add_image('flow collage', ToTensor()(flow_rgb[0]), global_iteration)
+                logger.add_histogram('flow_values', flow[0], global_iteration)
 
             # Reset Summary
             statistics = []
