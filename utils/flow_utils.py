@@ -5,6 +5,7 @@ import re
 from torchvision.transforms import ToTensor
 from matplotlib import cm
 from matplotlib.colors import ListedColormap, LinearSegmentedColormap
+import motion_illusions.utils.flow_plot
 
 TAG_CHAR = np.array([202021.25], np.float32)
 
@@ -47,7 +48,7 @@ def readPFM(file):
     shape = (height, width, 3) if color else (height, width)
 
     data = np.reshape(data, shape)
-    data = np.flipud(data)
+    #data = np.flipud(data)
     return data, scale
 
 def readFlow(fn):
@@ -106,17 +107,43 @@ def writeFlow(filename,uv,v=None):
     tmp.astype(np.float32).tofile(f)
     f.close()
 
-
 # ref: https://github.com/sampepose/flownet2-tf/
 # blob/18f87081db44939414fc4a48834f9e0da3e69f4c/src/flowlib.py#L240
 def visulize_flow_file(flow_filename, save_dir=None):
 	flow_data = readFlow(flow_filename)
-	img = flow2img(flow_data)
-	# plt.imshow(img)
+	img_orig = flow2img(flow_data)
+	img = motion_illusions.utils.flow_plot.dense_flow_as_quiver_plot(flow_data, image=None, quiver_scale=1.0/1.0)
+
+	# fig, (ax1, ax2) = plt.subplots(1, 2)
+	# ax1.imshow(img_orig)
+	# ax2.imshow(img)
 	# plt.show()
+
 	if save_dir:
 		idx = flow_filename.rfind("/") + 1
 		plt.imsave(os.path.join(save_dir, "%s-vis.png" % flow_filename[idx:-4]), img)
+
+# ref: https://github.com/sampepose/flownet2-tf/
+# blob/18f87081db44939414fc4a48834f9e0da3e69f4c/src/flowlib.py#L240
+def visulize_flow_file_and_target(flow_filename, target_flow_filename, save_dir=None):
+	flow_data = readFlow(flow_filename)
+	img_orig = flow2img(flow_data)
+	img = motion_illusions.utils.flow_plot.dense_flow_as_quiver_plot(flow_data, image=None, quiver_scale=1.0/1.0)
+
+	target_flow_data = readFlow(target_flow_filename)
+	target_img_orig = flow2img(target_flow_data)
+	target_img = motion_illusions.utils.flow_plot.dense_flow_as_quiver_plot(target_flow_data, image=None, quiver_scale=1.0)
+
+	fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2)
+	ax1.imshow(img_orig)
+	ax2.imshow(img)
+	ax3.imshow(target_img_orig)
+	ax4.imshow(target_img)
+	plt.show()
+
+	# if save_dir:
+	# 	idx = flow_filename.rfind("/") + 1
+	# 	plt.imsave(os.path.join(save_dir, "%s-vis.png" % flow_filename[idx:-4]), img)
 
 
 def flow2img(flow_data):

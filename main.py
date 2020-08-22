@@ -399,11 +399,21 @@ if __name__ == '__main__':
                 for i in range(args.inference_batch_size):
                     _pflow = output[i].data.cpu().numpy().transpose(1, 2, 0)
                     flow_utils.writeFlow( join(flow_folder, '%06d.flo'%(batch_idx * args.inference_batch_size + i)),  _pflow)
-                    
+
                     # You can comment out the plt block in visulize_flow_file() for real-time visualization
                     if args.inference_visualize:
                         flow_utils.visulize_flow_file(
                             join(flow_folder, '%06d.flo' % (batch_idx * args.inference_batch_size + i)),flow_vis_folder)
+
+                    # _tflow = target[i].data.cpu().numpy().squeeze().transpose(1, 2, 0)
+                    # flow_utils.writeFlow( join(flow_folder, '%06d_target.flo'%(batch_idx * args.inference_batch_size + i)),  _tflow)
+
+                    # # You can comment out the plt block in visulize_flow_file() for real-time visualization
+                    # if args.inference_visualize:
+                    #     flow_utils.visulize_flow_file_and_target(
+                    #         join(flow_folder, '%06d.flo' % (batch_idx * args.inference_batch_size + i)),
+                    #         join(flow_folder, '%06d_target.flo' % (batch_idx * args.inference_batch_size + i)),
+                    #         flow_vis_folder)
                    
                             
             progress.set_description('Inference Averages for Epoch {}: '.format(epoch) + tools.format_dictionary_of_losses(loss_labels, np.array(statistics).mean(axis=0)))
