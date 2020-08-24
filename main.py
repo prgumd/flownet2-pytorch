@@ -486,7 +486,7 @@ if __name__ == '__main__':
                                           'epoch': epoch,
                                           'state_dict': model_and_loss.module.model.state_dict(),
                                           'best_EPE': train_loss}, 
-                                          False, args.save, args.model, filename = 'train-checkpoint.pth.tar')
+                                          False, args.save, args.model, filename = 'train-checkpoint-epoch-{}.pth.tar'.format(epoch))
                 checkpoint_progress.update(1)
                 checkpoint_progress.close()
 
