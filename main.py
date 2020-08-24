@@ -250,6 +250,7 @@ if __name__ == '__main__':
     # Reusable function for training and validataion
     def train(args, epoch, start_iteration, data_loader, model, optimizer, logger, is_validate=False, offset=0):
         statistics = []
+        all_gradient_norms = []
         total_loss = 0
 
         if is_validate:
@@ -303,8 +304,9 @@ if __name__ == '__main__':
             elif not is_validate:
                 loss_val.backward()
                 if args.gradient_clip:
-                    g = torch.nn.utils.clip_grad_norm(model.parameters(), args.gradient_clip)
-                    #print('grad {}'.format(g))
+                    gradient_norm = torch.nn.utils.clip_grad_norm(model.parameters(), args.gradient_clip)
+                    all_gradient_norms.append(gradient_norm)
+
                 optimizer.step()
 
             # Update hyperparameters if needed
@@ -336,6 +338,10 @@ if __name__ == '__main__':
                 for i, key in enumerate(loss_labels):
                     logger.add_scalar('average batch ' + str(key), all_losses[:, i].mean(), global_iteration)
                     logger.add_histogram(str(key), all_losses[:, i], global_iteration)
+
+                if args.gradient_clip:
+                    logger.add_scalar('average batch gradient_norm', np.array(all_gradient_norms).mean(), global_iteration)
+                    all_gradient_norms = []
 
                 flow = tuple(map(np.squeeze, flow_utils.flow_postprocess(flow)))
                 flow_rgb = list(map(motion_illusions.utils.flow_plot.visualize_optical_flow_rgb, flow[0]/20.0))
