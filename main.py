@@ -17,6 +17,9 @@ from torchvision.transforms import ToTensor
 import models, losses, datasets
 from utils import flow_utils, tools
 
+import cv2
+import motion_illusions.utils.flow_plot
+
 # fp32 copy of parameters for update
 global param_copy
 
@@ -172,7 +175,8 @@ if __name__ == '__main__':
             def forward(self, data, target, inference=False ):
                 output = self.model(data)
 
-                loss_values = self.loss(output, target, data)
+                loss_values = self.loss(output, target)
+                #loss_values = self.loss(output, target, data)
 
                 if not inference :
                     return loss_values, output
@@ -268,6 +272,7 @@ if __name__ == '__main__':
 
             optimizer.zero_grad() if not is_validate else None
             losses, flow = model(data[0], target[0])
+
             losses = [torch.mean(loss_value) for loss_value in losses] 
             loss_val = losses[0] # Collect first loss for weight update
             total_loss += loss_val.item()
@@ -298,7 +303,8 @@ if __name__ == '__main__':
             elif not is_validate:
                 loss_val.backward()
                 if args.gradient_clip:
-                    torch.nn.utils.clip_grad_norm(model.parameters(), args.gradient_clip)
+                    g = torch.nn.utils.clip_grad_norm(model.parameters(), args.gradient_clip)
+                    #print('grad {}'.format(g))
                 optimizer.step()
 
             # Update hyperparameters if needed
@@ -332,11 +338,22 @@ if __name__ == '__main__':
                     logger.add_histogram(str(key), all_losses[:, i], global_iteration)
 
                 flow = tuple(map(np.squeeze, flow_utils.flow_postprocess(flow)))
-                flow_rgb = list(map(flow_utils.flow2img, flow[0]))
-                data_ = data[0]
-                logger.add_image('train Input', flow_utils.tensor2array(data_[0,:,0,:,:]), global_iteration)
-                logger.add_image('flow collage', ToTensor()(flow_rgb[0]), global_iteration)
-                logger.add_histogram('flow_values', flow[0], global_iteration)
+                flow_rgb = list(map(motion_illusions.utils.flow_plot.visualize_optical_flow_rgb, flow[0]/20.0))
+
+                target_flow = tuple(map(np.squeeze, flow_utils.flow_postprocess(target)))
+                target_flow_rgb = list(map(motion_illusions.utils.flow_plot.visualize_optical_flow_rgb, target_flow[0]))
+                #data_ = data[0]
+                #logger.add_image('train Input', flow_utils.tensor2array(data_[0,:,0,:,:]), global_iteration)
+                # logger.add_histogram('flow_values', flow[0], global_iteration)
+
+                flow_rgb_scaled = cv2.resize(flow_rgb[0], None, fx=4.0, fy=4.0)
+                flow_scaled = cv2.resize(flow[0][0]/20.0, None, fx=4.0, fy=4.0)
+                flow_rgb_quiver = motion_illusions.utils.flow_plot.dense_flow_as_quiver_plot(flow_scaled, image=np.copy(flow_rgb_scaled))
+                target_flow_rgb_quiver = motion_illusions.utils.flow_plot.dense_flow_as_quiver_plot(target_flow[0][0], image=np.copy(target_flow_rgb[0]))
+
+                logger.add_image('flow and target', ToTensor()(np.concatenate((flow_rgb_quiver, target_flow_rgb_quiver), axis=1)), global_iteration)
+                #logger.add_image('flow collage quiver', ToTensor()(flow_rgb_quiver), global_iteration)
+                #logger.add_image('flow target quiver', ToTensor()(target_flow_rgb_quiver), global_iteration)
 
             # Reset Summary
             statistics = []
@@ -401,19 +418,19 @@ if __name__ == '__main__':
                     flow_utils.writeFlow( join(flow_folder, '%06d.flo'%(batch_idx * args.inference_batch_size + i)),  _pflow)
 
                     # You can comment out the plt block in visulize_flow_file() for real-time visualization
-                    if args.inference_visualize:
-                        flow_utils.visulize_flow_file(
-                            join(flow_folder, '%06d.flo' % (batch_idx * args.inference_batch_size + i)),flow_vis_folder)
-
-                    # _tflow = target[i].data.cpu().numpy().squeeze().transpose(1, 2, 0)
-                    # flow_utils.writeFlow( join(flow_folder, '%06d_target.flo'%(batch_idx * args.inference_batch_size + i)),  _tflow)
-
-                    # # You can comment out the plt block in visulize_flow_file() for real-time visualization
                     # if args.inference_visualize:
-                    #     flow_utils.visulize_flow_file_and_target(
-                    #         join(flow_folder, '%06d.flo' % (batch_idx * args.inference_batch_size + i)),
-                    #         join(flow_folder, '%06d_target.flo' % (batch_idx * args.inference_batch_size + i)),
-                    #         flow_vis_folder)
+                    #     flow_utils.visulize_flow_file(
+                    #         join(flow_folder, '%06d.flo' % (batch_idx * args.inference_batch_size + i)),flow_vis_folder)
+
+                    _tflow = target[i].data.cpu().numpy().squeeze().transpose(1, 2, 0)
+                    flow_utils.writeFlow( join(flow_folder, '%06d_target.flo'%(batch_idx * args.inference_batch_size + i)),  _tflow)
+
+                    # You can comment out the plt block in visulize_flow_file() for real-time visualization
+                    if args.inference_visualize:
+                        flow_utils.visulize_flow_file_and_target(
+                            join(flow_folder, '%06d.flo' % (batch_idx * args.inference_batch_size + i)),
+                            join(flow_folder, '%06d_target.flo' % (batch_idx * args.inference_batch_size + i)),
+                            flow_vis_folder)
                    
                             
             progress.set_description('Inference Averages for Epoch {}: '.format(epoch) + tools.format_dictionary_of_losses(loss_labels, np.array(statistics).mean(axis=0)))

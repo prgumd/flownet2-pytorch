@@ -69,7 +69,7 @@ class MultiScale(nn.Module):
         self.loss_weights = torch.FloatTensor([(l_weight / 2 ** scale) for scale in range(self.numScales)])
         self.args = args
         self.l_type = norm
-        self.div_flow = 0.05
+        self.div_flow = 20.0 #0.05
         self.rgb_max = args.rgb_max
 
         assert(len(self.loss_weights) == self.numScales)
@@ -82,7 +82,8 @@ class MultiScale(nn.Module):
         self.multiScales = [nn.AvgPool2d(self.startScale * (2**scale), self.startScale * (2**scale)) for scale in range(self.numScales)]
         self.loss_labels = ['MultiScale-'+self.l_type, 'EPE'],
 
-    def forward(self, output, target, inputs):
+    #def forward(self, output, target, inputs):
+    def forward(self, output, target):
         lossvalue = 0
         epevalue = 0
 
@@ -101,24 +102,29 @@ class MultiScale(nn.Module):
         #     lossvalue += self.loss(output, target)
         #     return  [lossvalue, epevalue]
 
-        rgb_mean = inputs.contiguous().view(inputs.size()[:2]+(-1,)).mean(dim=-1).view(inputs.size()[:2] + (1,1,1,))
-        x = (inputs - rgb_mean) / self.rgb_max
-        prev_images = x[:,:,0,:,:]
-        next_images = x[:,:,1,:,:]
+        #rgb_mean = inputs.contiguous().view(inputs.size()[:2]+(-1,)).mean(dim=-1).view(inputs.size()[:2] + (1,1,1,))
+        #x = (inputs - rgb_mean) / self.rgb_max
+        #prev_images = x[:,:,0,:,:]
+        #next_images = x[:,:,1,:,:]
 
         if type(output) is tuple:
-            target = self.div_flow * target
+            target_scaled = self.div_flow * target
             for i, output_ in enumerate(output):
-                target_ = self.multiScales[i](target)
-                if i == 0:
-                    epevalue = EPE(output_, target_) * self.loss_weights[i]
-                    lossvalue = self.loss(output_, target_) * self.loss_weights[i]
-                else:
-                    epevalue += EPE(output_, target_) * self.loss_weights[i]
-                    lossvalue += self.loss(output_, target_) * self.loss_weights[i]
+                target_ = self.multiScales[i](target_scaled)
+                epe = EPE(output_, target_) * self.loss_weights[i]
+                loss = self.loss(output_, target_) * self.loss_weights[i]
 
-            photo_loss, _,_ = self.compute_photometric_loss_batch(prev_images, next_images, output)
-            return [photo_loss, epevalue]
+                #print('output {} {} {} {}'.format(i, loss, epe, self.loss_weights[i]))
+
+                if i == 0:
+                    epevalue = epe
+                    lossvalue = loss
+                else:
+                    epevalue += epe
+                    lossvalue += loss
+
+            #photo_loss, _,_ = self.compute_photometric_loss_batch(prev_images, next_images, output)
+            return [lossvalue, epevalue]
         else:
             epevalue = EPE(output, target)
             lossvalue = self.loss(output, target)

@@ -185,7 +185,6 @@ def flow2img(flow_data):
 
 	return np.uint8(img)
 
-
 def compute_color(u, v):
 	"""
 	compute optical flow color map

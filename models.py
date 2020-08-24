@@ -6,13 +6,13 @@ import math
 import numpy as np
 
 try:
-    # from networks.resample2d_package.resample2d import Resample2d
-    # from networks.channelnorm_package.channelnorm import ChannelNorm
+    from networks.resample2d_package.resample2d import Resample2d
+    from networks.channelnorm_package.channelnorm import ChannelNorm
 
-    # from networks import FlowNetC
-    # from networks import FlowNetS
+    from networks import FlowNetC
+    from networks import FlowNetS
     from networks import FlowNetSD
-    # from networks import FlowNetFusion
+    from networks import FlowNetFusion
 
     from networks.submodules import *
 except:
@@ -346,9 +346,9 @@ class FlowNet2SD(FlowNetSD.FlowNetSD):
         flow2 = self.predict_flow2(out_interconv2)
 
         if self.training:
-            return flow2,flow3,flow4,flow5,flow6
+             return flow2,flow3,flow4,flow5,flow6
         else:
-            return self.upsample1(flow2*self.div_flow)
+            return self.upsample1(flow2/self.div_flow)
 
 # class FlowNet2CS(nn.Module):
 
