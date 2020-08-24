@@ -291,8 +291,7 @@ class ChairsSDHom(data.Dataset):
     images = [img1, img2]
     image_size = img1.shape[:2]
     if self.is_cropped:
-        #cropper = StaticRandomCrop(image_size, self.crop_size)
-        cropper = StaticCenterCrop(image_size, self.crop_size)
+        cropper = StaticRandomCrop(image_size, self.crop_size)
     else:
         cropper = StaticCenterCrop(image_size, self.render_size)
     images = list(map(cropper, images))
