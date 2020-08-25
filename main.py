@@ -272,8 +272,8 @@ if __name__ == '__main__':
                 data, target = [d.cuda(non_blocking=True) for d in data], [t.cuda(non_blocking=True) for t in target]
 
             optimizer.zero_grad() if not is_validate else None
-            losses, flow = model(data[0], target[0])
 
+            losses, flow = model(data[0], target[0])
             losses = [torch.mean(loss_value) for loss_value in losses] 
             loss_val = losses[0] # Collect first loss for weight update
             total_loss += loss_val.item()
@@ -433,12 +433,25 @@ if __name__ == '__main__':
 
                     # You can comment out the plt block in visulize_flow_file() for real-time visualization
                     if args.inference_visualize:
-                        flow_utils.visulize_flow_file_and_target(
-                            join(flow_folder, '%06d.flo' % (batch_idx * args.inference_batch_size + i)),
-                            join(flow_folder, '%06d_target.flo' % (batch_idx * args.inference_batch_size + i)),
-                            flow_vis_folder)
-                   
-                            
+                        # flow_utils.visulize_flow_file_and_target(
+                        #     join(flow_folder, '%06d.flo' % (batch_idx * args.inference_batch_size + i)),
+                        #     join(flow_folder, '%06d_target.flo' % (batch_idx * args.inference_batch_size + i)),
+                        #     flow_vis_folder)
+
+                        flow_bgr = motion_illusions.utils.flow_plot.visualize_optical_flow_bgr(_pflow)
+                        target_flow_bgr = motion_illusions.utils.flow_plot.visualize_optical_flow_bgr(_tflow)
+
+                        flow_bgr_quiver = motion_illusions.utils.flow_plot.dense_flow_as_quiver_plot(_pflow, image=flow_bgr)
+                        target_flow_bgr_quiver = motion_illusions.utils.flow_plot.dense_flow_as_quiver_plot(_tflow, image=target_flow_bgr)
+
+                        estimate_and_ground_truth = np.concatenate((flow_bgr_quiver, target_flow_bgr_quiver), axis=1)
+
+                        flow_filename = join(flow_folder, '%06d.flo' % (batch_idx * args.inference_batch_size + i))
+                        idx = flow_filename.rfind("/") + 1
+                        visualization_filename = join(flow_vis_folder, "%s-vis.png" % flow_filename[idx:-4])
+
+                        cv2.imwrite(visualization_filename, estimate_and_ground_truth)
+
             progress.set_description('Inference Averages for Epoch {}: '.format(epoch) + tools.format_dictionary_of_losses(loss_labels, np.array(statistics).mean(axis=0)))
             progress.update(1)
 
