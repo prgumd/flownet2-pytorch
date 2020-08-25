@@ -135,7 +135,6 @@ class MultiScale(nn.Module):
         self.loss_weights = torch.FloatTensor([(l_weight / 2 ** scale) for scale in range(self.numScales)])
         self.args = args
         self.l_type = norm
-        self.div_flow = 20.0 #0.05
 
         assert(len(self.loss_weights) == self.numScales)
 
@@ -160,13 +159,9 @@ class MultiScale(nn.Module):
         lossvalue = 0
         epevalue = 0
 
-        # TODO we currently have hacked div_flow to 20 for training SD network
-        # However for all other networks this would be 0.05, should be a parameter
-        target_scaled = self.div_flow * target
-
         # Each member of output is a batch worth of flow at a certain scale
         for i, output_ in enumerate(output):
-            target_ = self.multiScales[i](target_scaled)
+            target_ = self.multiScales[i](target)
 
             epe = EPE(output_, target_) * self.loss_weights[i]
 

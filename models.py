@@ -341,10 +341,17 @@ class FlowNet2SD(FlowNetSD.FlowNetSD):
         out_interconv2 = self.inter_conv2(concat2)
         flow2 = self.predict_flow2(out_interconv2)
 
+        # It is ok to divide by self.div_flow here because
+        # this code is only called when  training this network
+        # on its own
         if self.training:
-             return flow2,flow3,flow4,flow5,flow6
+             return (flow2 / self.div_flow,
+                     flow3 / self.div_flow,
+                     flow4 / self.div_flow,
+                     flow5 / self.div_flow,
+                     flow6 / self.div_flow)
         else:
-            return self.upsample1(flow2/self.div_flow)
+            return self.upsample1(flow2 / self.div_flow)
 
 # class FlowNet2CS(nn.Module):
 

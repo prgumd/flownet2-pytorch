@@ -342,7 +342,7 @@ if __name__ == '__main__':
                     all_gradient_norms = []
 
                 flow = tuple(map(np.squeeze, flow_utils.flow_postprocess(flow)))
-                flow_rgb = list(map(motion_illusions.utils.flow_plot.visualize_optical_flow_rgb, flow[0]/20.0))
+                flow_rgb = list(map(motion_illusions.utils.flow_plot.visualize_optical_flow_rgb, flow[0]))
 
                 target_flow = tuple(map(np.squeeze, flow_utils.flow_postprocess(target)))
                 target_flow_rgb = list(map(motion_illusions.utils.flow_plot.visualize_optical_flow_rgb, target_flow[0]))
@@ -351,7 +351,7 @@ if __name__ == '__main__':
                 # logger.add_histogram('flow_values', flow[0], global_iteration)
 
                 flow_rgb_scaled = cv2.resize(flow_rgb[0], None, fx=4.0, fy=4.0)
-                flow_scaled = cv2.resize(flow[0][0]/20.0, None, fx=4.0, fy=4.0)
+                flow_scaled = cv2.resize(flow[0][0], None, fx=4.0, fy=4.0)
                 flow_rgb_quiver = motion_illusions.utils.flow_plot.dense_flow_as_quiver_plot(flow_scaled, image=np.copy(flow_rgb_scaled))
                 target_flow_rgb_quiver = motion_illusions.utils.flow_plot.dense_flow_as_quiver_plot(target_flow[0][0], image=np.copy(target_flow_rgb[0]))
 
