@@ -304,11 +304,7 @@ class FlowNet2SD(FlowNetSD.FlowNetSD):
         self.rgb_max = args.rgb_max
         self.div_flow = div_flow
 
-    def forward(self, inputs):
-        rgb_mean = inputs.contiguous().view(inputs.size()[:2]+(-1,)).mean(dim=-1).view(inputs.size()[:2] + (1,1,1,))
-        x = (inputs - rgb_mean) / self.rgb_max
-        x = torch.cat( (x[:,:,0,:,:], x[:,:,1,:,:]), dim = 1)
-
+    def forward(self, x):
         out_conv0 = self.conv0(x)
         out_conv1 = self.conv1_1(self.conv1(out_conv0))
         out_conv2 = self.conv2_1(self.conv2(out_conv1))

@@ -18,10 +18,6 @@ from PIL import Image
 def EPE(input_flow, target_flow):
     return torch.norm(target_flow-input_flow,p=2,dim=1).mean()
 
-def L1_loss(delta):
-    lossvalue = torch.abs(delta).mean()
-    return lossvalue
-
 class L1(nn.Module):
     def __init__(self):
         super(L1, self).__init__()
@@ -36,131 +32,27 @@ class L2(nn.Module):
         lossvalue = torch.norm(output-target,p=2,dim=1).mean()
         return lossvalue
 
-class L1Loss(nn.Module):
-    def __init__(self, args):
-        super(L1Loss, self).__init__()
-        self.args = args
+class PhotoL1(nn.Module):
+    def __init__(self):
+        super(PhotoL1, self).__init__()
         self.loss = L1()
-        self.loss_labels = ['L1', 'EPE']
 
-    def forward(self, output, target):
-        lossvalue = self.loss(output, target)
-        epevalue = EPE(output, target)
-        return [lossvalue, epevalue]
+    def forward(self, outputs, inputs):
+        prev_images = inputs[:, 0:3, :, :]
+        next_images = inputs[:, 3:6, :, :]
 
-class L2Loss(nn.Module):
-    def __init__(self, args):
-        super(L2Loss, self).__init__()
-        self.args = args
-        self.loss = L2()
-        self.loss_labels = ['L2', 'EPE']
+        _, _, height, width = outputs.size()
+        prev_images_resize = F.interpolate(prev_images, size=(height, width), mode='nearest')
+        next_images_resize = F.interpolate(next_images, size=(height, width), mode='nearest')
 
-    def forward(self, output, target):
-        lossvalue = self.loss(output, target)
-        epevalue = EPE(output, target)
-        return [lossvalue, epevalue]
-
-class MultiScale(nn.Module):
-    def __init__(self, args, startScale = 4, numScales = 5, l_weight= 0.32, norm= 'L1'):
-        super(MultiScale,self).__init__()
-
-        self.startScale = startScale
-        self.numScales = numScales
-        self.loss_weights = torch.FloatTensor([(l_weight / 2 ** scale) for scale in range(self.numScales)])
-        self.args = args
-        self.l_type = norm
-        self.div_flow = 20.0 #0.05
-        self.rgb_max = args.rgb_max
-
-        assert(len(self.loss_weights) == self.numScales)
-
-        if self.l_type == 'L1':
-            self.loss = L1()
-        else:
-            self.loss = L2()
-
-        self.multiScales = [nn.AvgPool2d(self.startScale * (2**scale), self.startScale * (2**scale)) for scale in range(self.numScales)]
-        self.loss_labels = ['MultiScale-'+self.l_type, 'EPE'],
-
-    #def forward(self, output, target, inputs):
-    def forward(self, output, target):
-        lossvalue = 0
-        epevalue = 0
-
-        # lburner - fix memory usage bug according to GitHub issue
-        # https://github.com/NVIDIA/flownet2-pytorch/issues/146#issuecomment-491171289
-
-        # if type(output) is tuple:
-        #     target = self.div_flow * target
-        #     for i, output_ in enumerate(output):
-        #         target_ = self.multiScales[i](target)
-        #         epevalue += self.loss_weights[i]*EPE(output_, target_)
-        #         lossvalue += self.loss_weights[i]*self.loss(output_, target_)
-        #     return [lossvalue, epevalue]
-        # else:
-        #     epevalue += EPE(output, target)
-        #     lossvalue += self.loss(output, target)
-        #     return  [lossvalue, epevalue]
-
-        #rgb_mean = inputs.contiguous().view(inputs.size()[:2]+(-1,)).mean(dim=-1).view(inputs.size()[:2] + (1,1,1,))
-        #x = (inputs - rgb_mean) / self.rgb_max
-        #prev_images = x[:,:,0,:,:]
-        #next_images = x[:,:,1,:,:]
-
-        if type(output) is tuple:
-            target_scaled = self.div_flow * target
-            for i, output_ in enumerate(output):
-                target_ = self.multiScales[i](target_scaled)
-                epe = EPE(output_, target_) * self.loss_weights[i]
-                loss = self.loss(output_, target_) * self.loss_weights[i]
-
-                #print('output {} {} {} {}'.format(i, loss, epe, self.loss_weights[i]))
-
-                if i == 0:
-                    epevalue = epe
-                    lossvalue = loss
-                else:
-                    epevalue += epe
-                    lossvalue += loss
-
-            #photo_loss, _,_ = self.compute_photometric_loss_batch(prev_images, next_images, output)
-            return [lossvalue, epevalue]
-        else:
-            epevalue = EPE(output, target)
-            lossvalue = self.loss(output, target)
-            return  [lossvalue, epevalue]
-
-
-
-
-
-    def compute_photometric_loss_batch(self, prev_images, next_images, flow_dict):
-
-        total_photometric_loss = 0.
-        loss_weight_sum = 0.
-
-        warped_imgs = []
-        diff_maps = []
+        next_images_warped = self.warp(next_images_resize, outputs)
         
-        for flow in flow_dict:
-            _, _, height, width = flow.size()
-            prev_images_resize = F.interpolate(prev_images, size=(height, width), mode='nearest')
-            next_images_resize = F.interpolate(next_images, size=(height, width), mode='nearest')
+        diff = next_images_warped - prev_images_resize
 
-            next_images_warped = self.warp(next_images_resize, flow)
-            
-            diff = next_images_warped - prev_images_resize
+        # Result should be a batch size by one tensor
+        photometric_loss = self.loss(next_images_warped, prev_images_resize)
 
-            photometric_loss = L1_loss(next_images_warped - prev_images_resize)
-            total_photometric_loss += photometric_loss
-            loss_weight_sum += 1.
-            warped_imgs.append(next_images_warped[0])
-            diff_maps.append(diff[0])
-
-        total_photometric_loss /= loss_weight_sum
-
-        return total_photometric_loss, warped_imgs, diff_maps
-
+        return photometric_loss
 
     def warp(self, x, flo):
         """
@@ -197,3 +89,109 @@ class MultiScale(nn.Module):
         mask[mask>0] = 1
         
         return output*mask
+
+class L1Loss(nn.Module):
+    def __init__(self, args):
+        super(L1Loss, self).__init__()
+        self.args = args
+        self.loss = L1()
+        self.loss_labels = ['L1', 'EPE']
+
+    def forward(self, output, target, inputs):
+        lossvalue = self.loss(output, target)
+        epevalue = EPE(output, target)
+        return [lossvalue, epevalue]
+
+class L2Loss(nn.Module):
+    def __init__(self, args):
+        super(L2Loss, self).__init__()
+        self.args = args
+        self.loss = L2()
+        self.loss_labels = ['L2', 'EPE']
+
+    def forward(self, output, target, inputs):
+        lossvalue = self.loss(output, target)
+        epevalue = EPE(output, target)
+        return [lossvalue, epevalue]
+
+class PhotoL1Loss(nn.Module):
+    def __init__(self, args):
+        super(PhotoL1Loss, self).__init__()
+        self.args = args
+        self.loss = PhotoL1()
+        self.loss_labels = ['PhotoL1', 'EPE']
+
+    def forward(self, output, target, inputs):
+        lossvalue = self.loss(output, inputs)
+        epevalue = EPE(output, target)
+        return [lossvalue, epevalue]
+
+class MultiScale(nn.Module):
+    def __init__(self, args, startScale = 4, numScales = 5, l_weight= 0.32, norm= 'L1'):
+        super(MultiScale,self).__init__()
+
+        self.startScale = startScale
+        self.numScales = numScales
+        self.loss_weights = torch.FloatTensor([(l_weight / 2 ** scale) for scale in range(self.numScales)])
+        self.args = args
+        self.l_type = norm
+        self.div_flow = 20.0 #0.05
+
+        assert(len(self.loss_weights) == self.numScales)
+
+        if self.l_type == 'L1':
+            self.loss = L1()
+        elif self.l_type == 'L2':
+            self.loss = L2()
+        elif self.l_type == 'PhotoL1':
+            self.loss = PhotoL1()
+        else:
+            raise ValueError('Unrecognized loss passed to Multiscale loss')
+
+        self.multiScales = [nn.AvgPool2d(self.startScale * (2**scale), self.startScale * (2**scale)) for scale in range(self.numScales)]
+        self.loss_labels = ['MultiScale-'+self.l_type, 'EPE']
+
+    def forward(self, output, target, inputs):
+        # If output is a tuple then this is a multiscale loss where each element
+        # of the tuple is one batch worth of flow at a certain scale
+        # If output is not a tuple then why is multiscale loss being used?
+        assert type(output) is tuple
+
+        lossvalue = 0
+        epevalue = 0
+
+        # TODO we currently have hacked div_flow to 20 for training SD network
+        # However for all other networks this would be 0.05, should be a parameter
+        target_scaled = self.div_flow * target
+
+        # Each member of output is a batch worth of flow at a certain scale
+        for i, output_ in enumerate(output):
+            target_ = self.multiScales[i](target_scaled)
+
+            epe = EPE(output_, target_) * self.loss_weights[i]
+
+            if self.l_type == 'L1' or self.l_type == 'L2':
+                loss = self.loss(output_, target_)
+            elif self.l_type == 'PhotoL1':
+                scaled_inputs = self.multiScales[i](inputs)
+                loss = self.loss(output_, scaled_inputs)
+            else:
+                raise ValueError('Unrecognized loss passed to Multiscale loss')
+
+            loss*=self.loss_weights[i]
+
+            #print('output {} {} {} {}'.format(i, loss, epe, self.loss_weights[i]))
+
+            # lburner - fix memory usage bug according to GitHub issue
+            # https://github.com/NVIDIA/flownet2-pytorch/issues/146#issuecomment-491171289
+            # Requires setting the epevalue and lossvalue functions on first iteration
+            # to make sure everything is in the correct devices memory
+            # Accumulate weighted loss from each scale
+            if i == 0:
+                epevalue = epe
+                lossvalue = loss
+            else:
+                epevalue += epe
+                lossvalue += loss
+
+        return [lossvalue, epevalue]

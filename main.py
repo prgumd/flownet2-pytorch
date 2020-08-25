@@ -171,12 +171,16 @@ if __name__ == '__main__':
                 self.model = args.model_class(args, **kwargs)
                 kwargs = tools.kwargs_from_args(args, 'loss')
                 self.loss = args.loss_class(args, **kwargs)
+                self.rgb_max = args.rgb_max
                 
             def forward(self, data, target, inference=False ):
-                output = self.model(data)
+                rgb_mean = data.contiguous().view(data.size()[:2]+(-1,)).mean(dim=-1).view(data.size()[:2] + (1,1,1,))
+                normalized_data = (data - rgb_mean) / self.rgb_max
+                inputs = torch.cat( (normalized_data[:,:,0,:,:], normalized_data[:,:,1,:,:]), dim = 1)
 
-                loss_values = self.loss(output, target)
-                #loss_values = self.loss(output, target, data)
+                output = self.model(inputs)
+
+                loss_values = self.loss(output, target, inputs)
 
                 if not inference :
                     return loss_values, output
@@ -278,13 +282,7 @@ if __name__ == '__main__':
             loss_val = losses[0] # Collect first loss for weight update
             total_loss += loss_val.item()
             loss_values = [v.item() for v in losses]
-
-            # gather loss_labels, direct return leads to recursion limit error as it looks for variables to gather'
-            # lburner - fix upstream bug where multiple labels are wrapped in an extra list
-            if type(model.module.loss.loss_labels[0]) is list:
-                loss_labels = list(model.module.loss.loss_labels[0])
-            else:
-                loss_labels = list(model.module.loss.loss_labels)
+            loss_labels = list(model.module.loss.loss_labels)
 
             assert not np.isnan(total_loss)
 
