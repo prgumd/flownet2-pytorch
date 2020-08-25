@@ -16,21 +16,31 @@ from PIL import Image
 
 
 def EPE(input_flow, target_flow):
-    return torch.norm(target_flow-input_flow,p=2,dim=1).mean()
+    per_pixel_norm = torch.norm(target_flow-input_flow,p=2,dim=1)
+
+    elements_per_sample = int(per_pixel_norm.numel() / per_pixel_norm.shape[0])
+    per_sample_mean = per_pixel_norm.view((per_pixel_norm.shape[0], elements_per_sample)).mean(dim=1)
+    return per_sample_mean
 
 class L1(nn.Module):
     def __init__(self):
         super(L1, self).__init__()
     def forward(self, output, target):
-        lossvalue = torch.abs(output - target).mean()
-        return lossvalue
+        per_pixel_norm = torch.abs(output-target).sum(dim=1)
+
+        elements_per_sample = int(per_pixel_norm.numel() / per_pixel_norm.shape[0])
+        per_sample_mean = per_pixel_norm.view((per_pixel_norm.shape[0], elements_per_sample)).mean(dim=1)
+        return per_sample_mean
 
 class L2(nn.Module):
     def __init__(self):
         super(L2, self).__init__()
     def forward(self, output, target):
-        lossvalue = torch.norm(output-target,p=2,dim=1).mean()
-        return lossvalue
+        per_pixel_norm = torch.norm(output-target,p=2,dim=1)
+
+        elements_per_sample = int(per_pixel_norm.numel() / per_pixel_norm.shape[0])
+        per_sample_mean = per_pixel_norm.view((per_pixel_norm.shape[0], elements_per_sample)).mean(dim=1)
+        return per_sample_mean
 
 class PhotoL1(nn.Module):
     def __init__(self):

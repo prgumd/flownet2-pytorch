@@ -278,6 +278,8 @@ if __name__ == '__main__':
             optimizer.zero_grad() if not is_validate else None
 
             losses, flow = model(data[0], target[0])
+            #print('Losses shape {} {}'.format(losses[0].shape, losses[1].shape))
+
             losses = [torch.mean(loss_value) for loss_value in losses] 
             loss_val = losses[0] # Collect first loss for weight update
             total_loss += loss_val.item()
