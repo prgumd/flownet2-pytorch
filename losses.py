@@ -51,16 +51,11 @@ class PhotoL1(nn.Module):
         prev_images = inputs[:, 0:3, :, :]
         next_images = inputs[:, 3:6, :, :]
 
-        _, _, height, width = outputs.size()
-        prev_images_resize = F.interpolate(prev_images, size=(height, width), mode='nearest')
-        next_images_resize = F.interpolate(next_images, size=(height, width), mode='nearest')
-
-        next_images_warped = self.warp(next_images_resize, outputs)
-        
-        diff = next_images_warped - prev_images_resize
+        next_images_warped = self.warp(next_images, outputs)
+        diff = next_images_warped - prev_images
 
         # Result should be a batch size by one tensor
-        photometric_loss = self.loss(next_images_warped, prev_images_resize)
+        photometric_loss = self.loss(next_images_warped, prev_images)
 
         return photometric_loss
 
