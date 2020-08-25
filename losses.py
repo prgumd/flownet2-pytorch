@@ -100,6 +100,56 @@ class PhotoL1(nn.Module):
         
         return output*mask
 
+import cv2
+import motion_illusions.utils.flow_plot as flow_plot
+class BrightnessConstancyL1(nn.Module):
+    def __init__(self):
+        super(BrightnessConstancyL1, self).__init__()
+        self.loss = L1()
+
+        # Pytorch does not accelerate torchvision with GPU so do our own operations
+        # Convert RGB to Gray the same way OpenCV does
+        # https://docs.opencv.org/master/de/d25/imgproc_color_conversions.html#color_convert_rgb_gray
+        self.rgb_to_gray = nn.Conv2d(3, 1, kernel_size=(1, 1), bias=False)
+        self.rgb_to_gray.weight = torch.nn.Parameter(
+            torch.FloatTensor((0.299, 0.587, 0.114)).reshape(self.rgb_to_gray.weight.shape), requires_grad=False)
+
+        self.sobel = nn.Conv2d(2, 1, kernel_size=(3, 3), bias=False, padding=1)
+        self.sobel.weight = torch.nn.Parameter(
+            (1.0/8.0) * torch.FloatTensor((
+                (-1, 0, 1),
+                (-2, 0, 2),
+                (-1, 0, 1),
+                (-1, -2, -1),
+                ( 0,  0,  0),
+                ( 1,  2,  1)
+            )).reshape((2, 1, 3, 3)),
+            requires_grad=False)
+
+    def forward(self, output, inputs):
+        prev_images = inputs[:, 0:3, :, :]
+        next_images = inputs[:, 3:6, :, :]
+
+        prev_intensity = self.rgb_to_gray(prev_images)
+        next_intensity = self.rgb_to_gray(next_images)
+
+        dI = next_intensity - prev_intensity
+        grad = self.sobel(next_intensity)
+
+        expected_brightness = (grad*output).sum(axis=1, keepdim=True)
+        loss_values = self.loss(expected_brightness, -dI)
+
+        # grad_bgr = flow_plot.visualize_optical_flow_bgr(grad[0, :, :, :].abs().cpu().numpy().transpose(1, 2, 0))
+
+        #dI_numpy = (255*(dI[0, :, :, :].abs())).cpu().numpy().transpose(1, 2, 0).astype(np.uint8)
+        #dI_numpy = np.concatenate((dI_numpy, dI_numpy, dI_numpy), axis=2)
+        #cv2.imshow('test', np.concatenate((dI_numpy, grad_bgr), axis=1))
+        # brightness_error = (expected_brightness + dI).abs()[0, :, :, :].detach().cpu().numpy().transpose(1, 2, 0)
+        # cv2.imshow('test', brightness_error)
+        # cv2.waitKey(1000)
+
+        return loss_values
+
 class L1Loss(nn.Module):
     def __init__(self, args):
         super(L1Loss, self).__init__()
@@ -129,8 +179,18 @@ class PhotoL1Loss(nn.Module):
         super(PhotoL1Loss, self).__init__()
         self.args = args
         self.loss = PhotoL1()
-        self.loss_labels = ['PhotoL1', 'EPE']
+        self.loss_labels = ['Photo-L1', 'EPE']
+    def forward(self, output, target, inputs):
+        lossvalue = self.loss(output, inputs)
+        epevalue = EPE(output, target)
+        return [lossvalue, epevalue]
 
+class BrightnessConstancyL1Loss(nn.Module):
+    def __init__ (self, args):
+        super(BrightnessConstancyL1Loss, self).__init__()
+        self.args = args
+        self.loss = BrightnessConstancyL1()
+        self.loss_labels = ['BrightnessConstancy-L1', 'EPE']
     def forward(self, output, target, inputs):
         lossvalue = self.loss(output, inputs)
         epevalue = EPE(output, target)
@@ -154,6 +214,8 @@ class MultiScale(nn.Module):
             self.loss = L2()
         elif self.l_type == 'PhotoL1':
             self.loss = PhotoL1()
+        elif self.l_type == 'BrightnessConstancyL1':
+            self.loss = BrightnessConstancyL1()
         else:
             raise ValueError('Unrecognized loss passed to Multiscale loss')
 
@@ -177,7 +239,7 @@ class MultiScale(nn.Module):
 
             if self.l_type == 'L1' or self.l_type == 'L2':
                 loss = self.loss(output_, target_)
-            elif self.l_type == 'PhotoL1':
+            elif self.l_type == 'PhotoL1' or self.l_type == 'BrightnessConstancyL1':
                 scaled_inputs = self.multiScales[i](inputs)
                 loss = self.loss(output_, scaled_inputs)
             else:

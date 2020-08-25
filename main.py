@@ -261,12 +261,12 @@ if __name__ == '__main__':
             model.eval()
             title = 'Validating Epoch {}'.format(epoch)
             args.validation_n_batches = np.inf if args.validation_n_batches < 0 else args.validation_n_batches
-            progress = tqdm(tools.IteratorTimer(data_loader), ncols=120, total=np.minimum(len(data_loader), args.validation_n_batches), leave=True, position=offset, desc=title)
+            progress = tqdm(tools.IteratorTimer(data_loader), ncols=150, total=np.minimum(len(data_loader), args.validation_n_batches), leave=True, position=offset, desc=title)
         else:
             model.train()
             title = 'Training Epoch {}'.format(epoch)
             args.train_n_batches = np.inf if args.train_n_batches < 0 else args.train_n_batches
-            progress = tqdm(tools.IteratorTimer(data_loader), ncols=120, total=np.minimum(len(data_loader), args.train_n_batches), smoothing=.9, miniters=1, leave=True, position=offset, desc=title)
+            progress = tqdm(tools.IteratorTimer(data_loader), ncols=150, total=np.minimum(len(data_loader), args.train_n_batches), smoothing=.9, miniters=1, leave=True, position=offset, desc=title)
 
         last_log_time = progress._time()
         for batch_idx, (data, target) in enumerate(progress):
@@ -392,7 +392,7 @@ if __name__ == '__main__':
         
         args.inference_n_batches = np.inf if args.inference_n_batches < 0 else args.inference_n_batches
 
-        progress = tqdm(data_loader, ncols=100, total=np.minimum(len(data_loader), args.inference_n_batches), desc='Inferencing ', 
+        progress = tqdm(data_loader, ncols=150, total=np.minimum(len(data_loader), args.inference_n_batches), desc='Inferencing ', 
             leave=True, position=offset)
 
         statistics = []
