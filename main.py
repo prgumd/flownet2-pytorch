@@ -254,18 +254,18 @@ if __name__ == '__main__':
 
     tiler = ImageTile.get_instance(session='evaluation', max_width=384*3, scale_factor=1.0)
     def visualize_results(flow, target_flow, input_images):
-        flow_rgb = motion_illusions.utils.flow_plot.visualize_optical_flow_rgb(flow)
-        flow_rgb_quiver = motion_illusions.utils.flow_plot.dense_flow_as_quiver_plot(flow, image=flow_rgb)
-        tiler.add_image(flow_rgb_quiver)
+        flow_image = motion_illusions.utils.flow_plot.visualize_optical_flow_rgb(flow)
+        flow_image_quiver = motion_illusions.utils.flow_plot.dense_flow_as_quiver_plot(flow, image=flow_image)
+        tiler.add_image(flow_image_quiver)
 
-        target_flow_rgb = motion_illusions.utils.flow_plot.visualize_optical_flow_rgb(target_flow)
-        target_flow_rgb_quiver = motion_illusions.utils.flow_plot.dense_flow_as_quiver_plot(target_flow, image=target_flow_rgb)
-        tiler.add_image(target_flow_rgb_quiver)
+        target_flow_image = motion_illusions.utils.flow_plot.visualize_optical_flow_rgb(target_flow)
+        target_flow_image_quiver = motion_illusions.utils.flow_plot.dense_flow_as_quiver_plot(target_flow, image=target_flow_image)
+        tiler.add_image(target_flow_image_quiver)
 
         diff_flow = target_flow - flow
-        diff_flow_rgb = motion_illusions.utils.flow_plot.visualize_optical_flow_bgr(diff_flow)
-        diff_flow_rgb_quiver = motion_illusions.utils.flow_plot.dense_flow_as_quiver_plot(diff_flow, image=diff_flow_rgb)
-        tiler.add_image(diff_flow_rgb_quiver)
+        diff_flow_image = motion_illusions.utils.flow_plot.visualize_optical_flow_rgb(diff_flow)
+        diff_flow_image_quiver = motion_illusions.utils.flow_plot.dense_flow_as_quiver_plot(diff_flow, image=diff_flow_image)
+        tiler.add_image(diff_flow_image_quiver)
 
         # Input images are float32 but with 8-bit range so we can average them like this
         input_images_mean = input_images.mean(axis=1).cpu().numpy().transpose(1, 2, 0)
@@ -465,7 +465,7 @@ if __name__ == '__main__':
 
                         results_image = visualize_results(_pflow, _tflow, data[0][0])
                         visualization_filename = join(flow_vis_folder, "%s-vis.png" % flow_filename[idx:-4])
-                        cv2.imwrite(visualization_filename, results_image)
+                        cv2.imwrite(visualization_filename, cv2.cvtColor(results_image, cv2.COLOR_RGB2BGR))
 
             progress.set_description('Inference Averages for Epoch {}: '.format(epoch) + tools.format_dictionary_of_losses(loss_labels, np.array(statistics).mean(axis=0)))
             progress.update(1)
