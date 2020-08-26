@@ -52,7 +52,6 @@ class PhotoL1(nn.Module):
         next_images = inputs[:, 3:6, :, :]
 
         next_images_warped = self.warp(next_images, outputs)
-        diff = next_images_warped - prev_images
 
         # Result should be a batch size by one tensor
         photometric_loss = self.loss(next_images_warped, prev_images)
