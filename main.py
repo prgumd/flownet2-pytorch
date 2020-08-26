@@ -252,7 +252,7 @@ if __name__ == '__main__':
     for argument, value in sorted(vars(args).items()):
         block.log2file(args.log_file, '{}: {}'.format(argument, value))
 
-    tiler = ImageTile.get_instance(session='evaluation', max_width=384*3, scale_factor=1.0)
+    tiler = ImageTile.get_instance(session='evaluation', max_width=args.inference_size[1]*3, scale_factor=1.0)
     def visualize_results(flow, target_flow, input_images):
         flow_image = motion_illusions.utils.flow_plot.visualize_optical_flow_rgb(flow)
         flow_image_quiver = motion_illusions.utils.flow_plot.dense_flow_as_quiver_plot(flow, image=flow_image)

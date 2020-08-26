@@ -234,7 +234,7 @@ class PhotoSmoothFirstGradAwareLoss(nn.Module):
         super(PhotoSmoothFirstGradAwareLoss, self).__init__()
         self.args = args
         self.w_photo = 1.0
-        self.w_smooth = 4.0
+        self.w_smooth = 0.1
         self.loss_photo  = PhotoL1()
         self.loss_smooth = SmoothFirstOrderGradAware()
         self.loss_labels = ['PhotoSmoothFirstGradAware', 'Photo-L1', 'SmoothFirstGradAware', 'EPE']
