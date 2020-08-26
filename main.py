@@ -343,21 +343,29 @@ if __name__ == '__main__':
                     logger.add_scalar('average batch gradient_norm', np.array(all_gradient_norms).mean(), global_iteration)
                     all_gradient_norms = []
 
-                flow = tuple(map(np.squeeze, flow_utils.flow_postprocess(flow)))
-                flow_rgb = list(map(motion_illusions.utils.flow_plot.visualize_optical_flow_rgb, flow[0]))
 
-                target_flow = tuple(map(np.squeeze, flow_utils.flow_postprocess(target)))
-                target_flow_rgb = list(map(motion_illusions.utils.flow_plot.visualize_optical_flow_rgb, target_flow[0]))
+                # Returns multiscale flow, get largest scale and first element in batch
+                flow = flow_utils.flow_postprocess(flow)[0][0]
+                flow_rgb = motion_illusions.utils.flow_plot.visualize_optical_flow_rgb(flow)
+
+                target_flow = flow_utils.flow_postprocess(target)[0][0]
+                target_flow_rgb = motion_illusions.utils.flow_plot.visualize_optical_flow_rgb(target_flow)
+
                 #data_ = data[0]
                 #logger.add_image('train Input', flow_utils.tensor2array(data_[0,:,0,:,:]), global_iteration)
                 # logger.add_histogram('flow_values', flow[0], global_iteration)
 
-                flow_rgb_scaled = cv2.resize(flow_rgb[0], None, fx=4.0, fy=4.0)
-                flow_scaled = cv2.resize(flow[0][0], None, fx=4.0, fy=4.0)
-                flow_rgb_quiver = motion_illusions.utils.flow_plot.dense_flow_as_quiver_plot(flow_scaled, image=np.copy(flow_rgb_scaled))
-                target_flow_rgb_quiver = motion_illusions.utils.flow_plot.dense_flow_as_quiver_plot(target_flow[0][0], image=np.copy(target_flow_rgb[0]))
+                flow_rgb_scaled = cv2.resize(flow_rgb, None, fx=4.0, fy=4.0)
+                flow_scaled = cv2.resize(flow, None, fx=4.0, fy=4.0)
+                flow_rgb_quiver = motion_illusions.utils.flow_plot.dense_flow_as_quiver_plot(flow_scaled, image=flow_rgb_scaled)
+                target_flow_rgb_quiver = motion_illusions.utils.flow_plot.dense_flow_as_quiver_plot(target_flow, image=target_flow_rgb)
 
-                logger.add_image('flow and target', ToTensor()(np.concatenate((flow_rgb_quiver, target_flow_rgb_quiver), axis=1)), global_iteration)
+                diff_flow = target_flow - flow_scaled
+                diff_flow_rgb = motion_illusions.utils.flow_plot.visualize_optical_flow_rgb(diff_flow)
+                diff_flow_rgb_quiver = motion_illusions.utils.flow_plot.dense_flow_as_quiver_plot(diff_flow, image=diff_flow_rgb)
+
+                logger.add_image('flow and target', ToTensor()(np.concatenate(
+                    (flow_rgb_quiver, target_flow_rgb_quiver, diff_flow_rgb_quiver), axis=1)), global_iteration)
                 #logger.add_image('flow collage quiver', ToTensor()(flow_rgb_quiver), global_iteration)
                 #logger.add_image('flow target quiver', ToTensor()(target_flow_rgb_quiver), global_iteration)
 
