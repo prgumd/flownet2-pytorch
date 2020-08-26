@@ -19,6 +19,7 @@ from utils import flow_utils, tools
 
 import cv2
 import motion_illusions.utils.flow_plot
+from motion_illusions.utils.image_tile import ImageTile
 
 # fp32 copy of parameters for update
 global param_copy
@@ -251,6 +252,33 @@ if __name__ == '__main__':
     for argument, value in sorted(vars(args).items()):
         block.log2file(args.log_file, '{}: {}'.format(argument, value))
 
+    tiler = ImageTile.get_instance(session='evaluation', max_width=384*3, scale_factor=1.0)
+    def visualize_results(flow, target_flow, input_images):
+        flow_rgb = motion_illusions.utils.flow_plot.visualize_optical_flow_rgb(flow)
+        flow_rgb_quiver = motion_illusions.utils.flow_plot.dense_flow_as_quiver_plot(flow, image=flow_rgb)
+        tiler.add_image(flow_rgb_quiver)
+
+        target_flow_rgb = motion_illusions.utils.flow_plot.visualize_optical_flow_rgb(target_flow)
+        target_flow_rgb_quiver = motion_illusions.utils.flow_plot.dense_flow_as_quiver_plot(target_flow, image=target_flow_rgb)
+        tiler.add_image(target_flow_rgb_quiver)
+
+        diff_flow = target_flow - flow
+        diff_flow_rgb = motion_illusions.utils.flow_plot.visualize_optical_flow_bgr(diff_flow)
+        diff_flow_rgb_quiver = motion_illusions.utils.flow_plot.dense_flow_as_quiver_plot(diff_flow, image=diff_flow_rgb)
+        tiler.add_image(diff_flow_rgb_quiver)
+
+        # Input images are float32 but with 8-bit range so we can average them like this
+        input_images_mean = input_images.mean(axis=1).cpu().numpy().transpose(1, 2, 0)
+        tiler.add_image(input_images_mean.astype(np.uint8))
+
+        for i in range(input_images.shape[1]):
+            input_image = input_images[:, i, : ,:].cpu().numpy().transpose(1, 2, 0)
+            tiler.add_image(input_image.astype(np.uint8))
+
+        frame = tiler.compose()
+        tiler.clear_scene()
+        return frame
+
     # Reusable function for training and validataion
     def train(args, epoch, start_iteration, data_loader, model, optimizer, logger, is_validate=False, offset=0):
         statistics = []
@@ -346,28 +374,14 @@ if __name__ == '__main__':
 
                 # Returns multiscale flow, get largest scale and first element in batch
                 flow = flow_utils.flow_postprocess(flow)[0][0]
-                flow_rgb = motion_illusions.utils.flow_plot.visualize_optical_flow_rgb(flow)
+                flow_scaled = cv2.resize(flow, None, fx=4.0, fy=4.0)
 
                 target_flow = flow_utils.flow_postprocess(target)[0][0]
-                target_flow_rgb = motion_illusions.utils.flow_plot.visualize_optical_flow_rgb(target_flow)
 
-                #data_ = data[0]
-                #logger.add_image('train Input', flow_utils.tensor2array(data_[0,:,0,:,:]), global_iteration)
+                results_image = visualize_results(flow_scaled, target_flow, data[0][0])
+
+                logger.add_image('flow and target', ToTensor()(results_image), global_iteration)
                 # logger.add_histogram('flow_values', flow[0], global_iteration)
-
-                flow_rgb_scaled = cv2.resize(flow_rgb, None, fx=4.0, fy=4.0)
-                flow_scaled = cv2.resize(flow, None, fx=4.0, fy=4.0)
-                flow_rgb_quiver = motion_illusions.utils.flow_plot.dense_flow_as_quiver_plot(flow_scaled, image=flow_rgb_scaled)
-                target_flow_rgb_quiver = motion_illusions.utils.flow_plot.dense_flow_as_quiver_plot(target_flow, image=target_flow_rgb)
-
-                diff_flow = target_flow - flow_scaled
-                diff_flow_rgb = motion_illusions.utils.flow_plot.visualize_optical_flow_rgb(diff_flow)
-                diff_flow_rgb_quiver = motion_illusions.utils.flow_plot.dense_flow_as_quiver_plot(diff_flow, image=diff_flow_rgb)
-
-                logger.add_image('flow and target', ToTensor()(np.concatenate(
-                    (flow_rgb_quiver, target_flow_rgb_quiver, diff_flow_rgb_quiver), axis=1)), global_iteration)
-                #logger.add_image('flow collage quiver', ToTensor()(flow_rgb_quiver), global_iteration)
-                #logger.add_image('flow target quiver', ToTensor()(target_flow_rgb_quiver), global_iteration)
 
             # Reset Summary
             statistics = []
@@ -446,19 +460,12 @@ if __name__ == '__main__':
                         #     join(flow_folder, '%06d_target.flo' % (batch_idx * args.inference_batch_size + i)),
                         #     flow_vis_folder)
 
-                        flow_bgr = motion_illusions.utils.flow_plot.visualize_optical_flow_bgr(_pflow)
-                        target_flow_bgr = motion_illusions.utils.flow_plot.visualize_optical_flow_bgr(_tflow)
-
-                        flow_bgr_quiver = motion_illusions.utils.flow_plot.dense_flow_as_quiver_plot(_pflow, image=flow_bgr)
-                        target_flow_bgr_quiver = motion_illusions.utils.flow_plot.dense_flow_as_quiver_plot(_tflow, image=target_flow_bgr)
-
-                        estimate_and_ground_truth = np.concatenate((flow_bgr_quiver, target_flow_bgr_quiver), axis=1)
-
                         flow_filename = join(flow_folder, '%06d.flo' % (batch_idx * args.inference_batch_size + i))
                         idx = flow_filename.rfind("/") + 1
-                        visualization_filename = join(flow_vis_folder, "%s-vis.png" % flow_filename[idx:-4])
 
-                        cv2.imwrite(visualization_filename, estimate_and_ground_truth)
+                        results_image = visualize_results(_pflow, _tflow, data[0][0])
+                        visualization_filename = join(flow_vis_folder, "%s-vis.png" % flow_filename[idx:-4])
+                        cv2.imwrite(visualization_filename, results_image)
 
             progress.set_description('Inference Averages for Epoch {}: '.format(epoch) + tools.format_dictionary_of_losses(loss_labels, np.array(statistics).mean(axis=0)))
             progress.update(1)
