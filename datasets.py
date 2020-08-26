@@ -364,6 +364,65 @@ class ImagesFromFolder(data.Dataset):
   def __len__(self):
     return self.size * self.replicates
 
+class ImagesFlowFromFolder(data.Dataset):
+  def __init__(self, args, is_cropped, root = '/path/to/frames_and_flow/folder', iext = 'png', replicates = 1):
+    self.args = args
+    self.is_cropped = is_cropped
+    self.crop_size = args.crop_size
+    self.render_size = args.inference_size
+    self.replicates = replicates
+
+    images = sorted( glob( join(root, '*.' + iext) ) )
+    self.flow_list = sorted( glob( join(root, '*.' + 'flo') ) )
+
+    self.image_list = []
+    for i in range(len(images)-1):
+        im1 = images[i]
+        im2 = images[i+1]
+        self.image_list += [ [ im1, im2 ] ]
+
+    print('{} {}'.format(len(self.image_list), len( self.flow_list)))
+    assert (len(self.image_list) == len(self.flow_list))
+
+
+    self.size = len(self.image_list)
+
+    self.frame_size = frame_utils.read_gen(self.image_list[0][0]).shape
+
+    if (self.render_size[0] < 0) or (self.render_size[1] < 0) or (self.frame_size[0]%64) or (self.frame_size[1]%64):
+        self.render_size[0] = ( (self.frame_size[0])//64 ) * 64
+        self.render_size[1] = ( (self.frame_size[1])//64 ) * 64
+
+    args.inference_size = self.render_size
+
+  def __getitem__(self, index):
+    index = index % self.size
+
+    img1 = frame_utils.read_gen(self.image_list[index][0])
+    img2 = frame_utils.read_gen(self.image_list[index][1])
+    flow = frame_utils.read_gen(self.flow_list[index])
+
+    images = [img1, img2]
+    image_size = img1.shape[:2]
+    if self.is_cropped:
+        cropper = StaticRandomCrop(image_size, self.crop_size)
+    else:
+        cropper = StaticCenterCrop(image_size, self.render_size)
+    images = list(map(cropper, images))
+    flow = cropper(flow)
+
+    images = np.array(images).transpose(3,0,1,2)
+
+    flow = flow.transpose(2,0,1)
+
+    images = torch.from_numpy(images.astype(np.float32))
+    flow = torch.from_numpy(flow.astype(np.float32))
+
+    return [images], [flow]
+
+  def __len__(self):
+    return self.size * self.replicates
+
 '''
 import argparse
 import sys, os
