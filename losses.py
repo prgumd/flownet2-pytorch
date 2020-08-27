@@ -272,6 +272,7 @@ class MultiScale(nn.Module):
             raise ValueError('Unrecognized loss passed to Multiscale loss')
 
         self.multiScales = [nn.AvgPool2d(self.startScale * (2**scale), self.startScale * (2**scale)) for scale in range(self.numScales)]
+        self.multiScaleFactors = [self.startScale * (2**scale) for scale in range(self.numScales)]
         self.loss_labels = ['MultiScale-'+self.l_type, 'EPE']
 
     def forward(self, output, target, inputs):
@@ -293,10 +294,12 @@ class MultiScale(nn.Module):
                 loss = self.loss(output_, target_)
             elif self.l_type == 'PhotoL1' or self.l_type == 'BrightnessConstancyL1':
                 scaled_inputs = self.multiScales[i](inputs)
-                loss = self.loss(output_, scaled_inputs)
+                output_scaled_ = output_ / self.multiScaleFactors[i]
+                loss = self.loss(output_scaled_, scaled_inputs)
             elif self.l_type == 'PhotoSmoothFirstGradAwareLoss':
                 scaled_inputs = self.multiScales[i](inputs)
-                loss = self.loss(output_, target_, scaled_inputs)[0]
+                output_scaled_ = output_ / self.multiScaleFactors[i]
+                loss = self.loss(output_scaled_, target_, scaled_inputs)[0]
             else:
                 raise ValueError('Unrecognized loss passed to Multiscale loss')
 
