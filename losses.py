@@ -183,6 +183,46 @@ class SmoothFirstOrderGradAware(nn.Module):
         per_sample_mean = per_pixel_loss.view((per_pixel_loss.shape[0], elements_per_sample)).mean(dim=1)
         return per_sample_mean
 
+class SmoothFirstOrder(nn.Module):
+    def __init__(self, gamma=150):
+        super(SmoothFirstOrder, self).__init__()
+        self.gamma = 150
+        self.sobel = nn.Conv2d(2, 1, kernel_size=(3, 3), bias=False, padding=1)
+        self.sobel.weight = torch.nn.Parameter(
+            (1.0/8.0) * torch.FloatTensor((
+                (-1, 0, 1),
+                (-2, 0, 2),
+                (-1, 0, 1),
+                (-1, -2, -1),
+                ( 0,  0,  0),
+                ( 1,  2,  1)
+            )).reshape((2, 1, 3, 3)),
+            requires_grad=False)
+
+    def forward(self, output, inputs):
+        prev_images = inputs[:, 0:3, :, :]
+        #next_images = inputs[:, 3:6, :, :]
+
+        single_channel_image_shape = (prev_images.shape[0], 1, prev_images.shape[2], prev_images.shape[3])
+        # r_grad = torch.abs(self.sobel(prev_images[:, 0, :, :].view(single_channel_image_shape)))
+        # g_grad = torch.abs(self.sobel(prev_images[:, 1, :, :].view(single_channel_image_shape)))
+        # b_grad = torch.abs(self.sobel(prev_images[:, 2, :, :].view(single_channel_image_shape)))
+        # grad_sum_x = -self.gamma*(r_grad[:, 0, :, :] + g_grad[:, 0, :, :] + b_grad[:, 0, :, :]) / 3.0
+        # grad_sum_y = -self.gamma*(r_grad[:, 1, :, :] + g_grad[:, 1, :, :] + b_grad[:, 1, :, :]) / 3.0
+
+        # grad_sum_x_exp = torch.exp(grad_sum_x)
+        # grad_sum_y_exp = torch.exp(grad_sum_y)
+
+        flow_grad_x_sum = torch.abs(self.sobel(output[:, 0, :, :].view(single_channel_image_shape))).sum(dim=1)
+        flow_grad_y_sum = torch.abs(self.sobel(output[:, 1, :, :].view(single_channel_image_shape))).sum(dim=1)
+
+        per_pixel_loss = flow_grad_x_sum + flow_grad_y_sum
+
+        elements_per_sample = int(per_pixel_loss.numel() / per_pixel_loss.shape[0])
+        per_sample_mean = per_pixel_loss.view((per_pixel_loss.shape[0], elements_per_sample)).mean(dim=1)
+        return per_sample_mean
+
+
 class L1Loss(nn.Module):
     def __init__(self, args):
         super(L1Loss, self).__init__()
@@ -246,6 +286,23 @@ class PhotoSmoothFirstGradAwareLoss(nn.Module):
         epevalue = EPE(output, target)
         return [lossvalue, loss_photo, loss_smooth, epevalue]
 
+class PhotoSmoothFirstLoss(nn.Module):
+    def __init__ (self, args):
+        super(PhotoSmoothFirstLoss, self).__init__()
+        self.args = args
+        self.w_photo = 1.0
+        self.w_smooth = 0.1
+        self.loss_photo  = PhotoL1()
+        self.loss_smooth = SmoothFirstOrder()
+        self.loss_labels = ['PhotoSmoothFirst', 'Photo-L1', 'SmoothFirst', 'EPE']
+    def forward(self, output, target, inputs):
+        loss_photo = self.loss_photo(output, inputs)
+        loss_smooth = self.loss_smooth(output, inputs)
+
+        lossvalue = self.w_photo * loss_photo + self.w_smooth * loss_smooth
+        epevalue = EPE(output, target)
+        return [lossvalue, loss_photo, loss_smooth, epevalue]
+
 class MultiScale(nn.Module):
     def __init__(self, args, startScale = 4, numScales = 5, l_weight= 0.32, norm= 'L1'):
         super(MultiScale,self).__init__()
@@ -268,6 +325,8 @@ class MultiScale(nn.Module):
             self.loss = BrightnessConstancyL1()
         elif self.l_type == 'PhotoSmoothFirstGradAwareLoss':
             self.loss = PhotoSmoothFirstGradAwareLoss(args)
+        elif self.l_type == 'PhotoSmoothFirstLoss':
+            self.loss = PhotoSmoothFirstLoss(args)
         else:
             raise ValueError('Unrecognized loss passed to Multiscale loss')
 
@@ -297,6 +356,10 @@ class MultiScale(nn.Module):
                 output_scaled_ = output_ / self.multiScaleFactors[i]
                 loss = self.loss(output_scaled_, scaled_inputs)
             elif self.l_type == 'PhotoSmoothFirstGradAwareLoss':
+                scaled_inputs = self.multiScales[i](inputs)
+                output_scaled_ = output_ / self.multiScaleFactors[i]
+                loss = self.loss(output_scaled_, target_, scaled_inputs)[0]
+            elif self.l_type == 'PhotoSmoothFirstLoss':
                 scaled_inputs = self.multiScales[i](inputs)
                 output_scaled_ = output_ / self.multiScaleFactors[i]
                 loss = self.loss(output_scaled_, target_, scaled_inputs)[0]

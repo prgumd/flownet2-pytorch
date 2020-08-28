@@ -268,7 +268,7 @@ if __name__ == '__main__':
         tiler.add_image(diff_flow_image_quiver)
 
         # Input images are float32 but with 8-bit range so we can average them like this
-        input_images_mean = input_images.mean(axis=1).cpu().numpy().transpose(1, 2, 0)
+        input_images_mean = input_images.mean(dim=1).cpu().numpy().transpose(1, 2, 0)
         tiler.add_image(input_images_mean.astype(np.uint8))
 
         for i in range(input_images.shape[1]):

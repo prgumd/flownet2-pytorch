@@ -49,11 +49,12 @@ class MpiSintel(data.Dataset):
                 continue
 
             fbase = file[len(flow_root)+1:]
-            fprefix = fbase[:-8]
-            fnum = int(fbase[-8:-4])
+            fprefix = fbase[:-16]
+            fnum_ = fbase[-11:-5]
+            fnum = int(fbase[-5:-4])
 
-            img1 = join(image_root, fprefix + "%04d"%(fnum+0) + '.png')
-            img2 = join(image_root, fprefix + "%04d"%(fnum+1) + '.png')
+            img1 = join(image_root, fprefix + fnum_ + "%d"%(fnum+0) + '.png')
+            img2 = join(image_root, fprefix + fnum_ + "%d"%(fnum+1) + '.png')
 
             if not isfile(img1) or not isfile(img2) or not isfile(file):
                 continue
@@ -62,7 +63,6 @@ class MpiSintel(data.Dataset):
             self.flow_list += [file]
 
         self.size = len(self.image_list)
-
         self.frame_size = frame_utils.read_gen(self.image_list[0][0]).shape
 
         if (self.render_size[0] < 0) or (self.render_size[1] < 0) or (self.frame_size[0]%64) or (self.frame_size[1]%64):
