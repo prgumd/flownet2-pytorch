@@ -43,7 +43,7 @@ class MpiSintel(data.Dataset):
         self.flow_list = []
         self.image_list = []
 
-        for file in file_list:
+        for i, file in enumerate(file_list):
             if 'test' in file:
                 # print file
                 continue
@@ -55,12 +55,15 @@ class MpiSintel(data.Dataset):
 
             img1 = join(image_root, fprefix + fnum_ + "%d"%(fnum+0) + '.png')
             img2 = join(image_root, fprefix + fnum_ + "%d"%(fnum+1) + '.png')
+            img3 = join(image_root, fprefix + fnum_ + "%d"%(fnum+2) + '.png')
+            img4 = join(image_root, fprefix + fnum_ + "%d"%(fnum+3) + '.png')
 
-            if not isfile(img1) or not isfile(img2) or not isfile(file):
+            if not isfile(img1) or not isfile(img2) or not isfile(img3) or not isfile(img4) or  \
+            not isfile(file) or not isfile(file_list[i+1]) or not isfile(file_list[i+2]):
                 continue
 
-            self.image_list += [[img1, img2]]
-            self.flow_list += [file]
+            self.image_list += [[img1, img2, img3, img4]]
+            self.flow_list += [[file, file_list[i+1], file_list[i+2]]]
 
         self.size = len(self.image_list)
         self.frame_size = frame_utils.read_gen(self.image_list[0][0]).shape
@@ -79,26 +82,32 @@ class MpiSintel(data.Dataset):
 
         img1 = frame_utils.read_gen(self.image_list[index][0])
         img2 = frame_utils.read_gen(self.image_list[index][1])
+        img3 = frame_utils.read_gen(self.image_list[index][2])
+        img4 = frame_utils.read_gen(self.image_list[index][3])
 
-        flow = frame_utils.read_gen(self.flow_list[index])
+        flow1 = frame_utils.read_gen(self.flow_list[index][0])
+        flow2 = frame_utils.read_gen(self.flow_list[index][1])
+        flow3 = frame_utils.read_gen(self.flow_list[index][2])
 
-        images = [img1, img2]
+        images = [img1, img2, img3, img4]
         image_size = img1.shape[:2]
+
+        flows = [flow1, flow2, flow3]
 
         if self.is_cropped:
             cropper = StaticRandomCrop(image_size, self.crop_size)
         else:
             cropper = StaticCenterCrop(image_size, self.render_size)
         images = list(map(cropper, images))
-        flow = cropper(flow)
+        flows = list(map(cropper, flows))
 
         images = np.array(images).transpose(3,0,1,2)
-        flow = flow.transpose(2,0,1)
+        flows = np.array(flows).transpose(3,0,1,2)
 
         images = torch.from_numpy(images.astype(np.float32))
-        flow = torch.from_numpy(flow.astype(np.float32))
+        flows = torch.from_numpy(flows.astype(np.float32))
 
-        return [images], [flow]
+        return [images], [flows]
 
     def __len__(self):
         return self.size * self.replicates

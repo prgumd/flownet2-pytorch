@@ -62,6 +62,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--skip_training', action='store_true')
     parser.add_argument('--skip_validation', action='store_true')
+    parser.add_argument('--multiframe', action='store_true')
 
     parser.add_argument('--fp16', action='store_true', help='Run model in pseudo-fp16 mode (fp16 storage fp32 math).')
     parser.add_argument('--fp16_scale', type=float, default=1024., help='Loss scaling, positive power of 2 values can improve fp16 convergence.')
@@ -164,6 +165,7 @@ if __name__ == '__main__':
             inference_loader = DataLoader(inference_dataset, batch_size=args.effective_inference_batch_size, shuffle=False, **inf_gpuargs)
 
     # Dynamically load model and loss class with parameters passed in via "--model_[param]=[value]" or "--loss_[param]=[value]" arguments
+    
     with tools.TimerBlock("Building {} model".format(args.model)) as block:
         class ModelAndLoss(nn.Module):
             def __init__(self, args):
@@ -188,7 +190,36 @@ if __name__ == '__main__':
                 else :
                     return loss_values, output
 
-        model_and_loss = ModelAndLoss(args)
+        class ModelAndLossMulti(nn.Module):
+            def __init__(self, args):
+                super(ModelAndLossMulti, self).__init__()
+                kwargs = tools.kwargs_from_args(args, 'model')
+                self.model = args.model_class(args, **kwargs)
+                kwargs = tools.kwargs_from_args(args, 'loss')
+                self.loss = args.loss_class(args, **kwargs)
+                self.rgb_max = args.rgb_max
+                
+            def forward(self, data, target, inference=False ):
+                rgb_mean = data.contiguous().view(data.size()[:2]+(-1,)).mean(dim=-1).view(data.size()[:2] + (1,1,1,))
+                normalized_data = (data - rgb_mean) / self.rgb_max
+                inputs_net = torch.cat( (normalized_data[:,:,0,:,:], normalized_data[:,:,1,:,:], \
+                    normalized_data[:,:,2,:,:]), dim = 1)
+
+                inputs_loss = torch.cat( (normalized_data[:,:,0,:,:], normalized_data[:,:,1,:,:], \
+                    normalized_data[:,:,2,:,:], normalized_data[:,:,3,:,:]), dim = 1)
+
+                output = self.model(inputs_net)
+                loss_values = self.loss(output, target, inputs_loss)
+
+                if not inference :
+                    return loss_values, output
+                else :
+                    return loss_values, output
+
+        if args.multiframe:
+            model_and_loss = ModelAndLossMulti(args)
+        else:
+            model_and_loss = ModelAndLoss(args)
 
         block.log('Effective Batch Size: {}'.format(args.effective_batch_size))
         block.log('Number of parameters: {}'.format(sum([p.data.nelement() if p.requires_grad else 0 for p in model_and_loss.parameters()])))
@@ -373,14 +404,34 @@ if __name__ == '__main__':
 
 
                 # Returns multiscale flow, get largest scale and first element in batch
-                flow = flow_utils.flow_postprocess(flow)[0][0]
-                flow_scaled = cv2.resize(flow, None, fx=4.0, fy=4.0)
+                if args.multiframe: 
+                    flow = flow_utils.flow_postprocess(flow)[0][0]
 
-                target_flow = flow_utils.flow_postprocess(target)[0][0]
+                    flow1_scaled = cv2.resize(flow[:,:,:2], None, fx=4.0, fy=4.0)
+                    flow2_scaled = cv2.resize(flow[:,:,2:4], None, fx=4.0, fy=4.0)
+                    flow3_scaled = cv2.resize(flow[:,:,4:], None, fx=4.0, fy=4.0)
 
-                results_image = visualize_results(flow_scaled, target_flow, data[0][0])
 
-                logger.add_image('flow and target', ToTensor()(results_image), global_iteration)
+                    target = target[0].detach().numpy()
+                    target_flow = np.transpose(target[0], (1, 2, 3, 0))
+
+                    results1_image = visualize_results(flow1_scaled, target_flow[0], data[0][0])
+                    results2_image = visualize_results(flow2_scaled, target_flow[1], data[0][0])
+                    results3_image = visualize_results(flow3_scaled, target_flow[2], data[0][0])
+
+                    logger.add_image('flow1 and target', ToTensor()(results1_image), global_iteration)
+                    logger.add_image('flow2 and target', ToTensor()(results2_image), global_iteration)
+                    logger.add_image('flow3 and target', ToTensor()(results3_image), global_iteration)
+
+                else:
+                    flow = flow_utils.flow_postprocess(flow)[0][0]
+                    flow_scaled = cv2.resize(flow, None, fx=4.0, fy=4.0)
+                    target_flow = flow_utils.flow_postprocess(target)[0][0]
+                    results_image = visualize_results(flow_scaled, target_flow, data[0][0])
+                    logger.add_image('flow and target', ToTensor()(results_image), global_iteration)
+
+                
+
                 # logger.add_histogram('flow_values', flow[0], global_iteration)
 
             # Reset Summary

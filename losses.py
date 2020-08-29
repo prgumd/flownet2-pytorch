@@ -186,7 +186,7 @@ class SmoothFirstOrderGradAware(nn.Module):
 class SmoothFirstOrder(nn.Module):
     def __init__(self, gamma=150):
         super(SmoothFirstOrder, self).__init__()
-        self.gamma = 150
+        # self.gamma = 150
         self.sobel = nn.Conv2d(2, 1, kernel_size=(3, 3), bias=False, padding=1)
         self.sobel.weight = torch.nn.Parameter(
             (1.0/8.0) * torch.FloatTensor((
@@ -359,6 +359,100 @@ class MultiScale(nn.Module):
                 scaled_inputs = self.multiScales[i](inputs)
                 output_scaled_ = output_ / self.multiScaleFactors[i]
                 loss = self.loss(output_scaled_, target_, scaled_inputs)[0]
+            elif self.l_type == 'PhotoSmoothFirstLoss':
+                scaled_inputs = self.multiScales[i](inputs)
+                output_scaled_ = output_ / self.multiScaleFactors[i]
+                loss = self.loss(output_scaled_, target_, scaled_inputs)[0]
+            else:
+                raise ValueError('Unrecognized loss passed to Multiscale loss')
+
+            loss*=self.loss_weights[i]
+
+            #print('output {} {} {} {}'.format(i, loss, epe, self.loss_weights[i]))
+
+            # lburner - fix memory usage bug according to GitHub issue
+            # https://github.com/NVIDIA/flownet2-pytorch/issues/146#issuecomment-491171289
+            # Requires setting the epevalue and lossvalue functions on first iteration
+            # to make sure everything is in the correct devices memory
+            # Accumulate weighted loss from each scale
+            if i == 0:
+                epevalue = epe
+                lossvalue = loss
+            else:
+                epevalue += epe
+                lossvalue += loss
+
+        return [lossvalue, epevalue]
+
+
+
+class MultiScaleMultiFrame(nn.Module):
+    def __init__(self, args, startScale = 4, numScales = 5, l_weight= 0.32, norm= 'L1'):
+        super(MultiScaleMultiFrame,self).__init__()
+
+        self.startScale = startScale
+        self.numScales = numScales
+        self.loss_weights = torch.FloatTensor([(l_weight / 2 ** scale) for scale in range(self.numScales)])
+        self.args = args
+        self.l_type = norm
+
+        assert(len(self.loss_weights) == self.numScales)
+
+        if self.l_type == 'L1':
+            self.loss = L1()
+        elif self.l_type == 'L2':
+            self.loss = L2()
+        elif self.l_type == 'PhotoL1':
+            self.loss = PhotoL1()
+        elif self.l_type == 'BrightnessConstancyL1':
+            self.loss = BrightnessConstancyL1()
+        elif self.l_type == 'PhotoSmoothFirstGradAwareLoss':
+            self.loss = PhotoSmoothFirstGradAwareLoss(args)
+        elif self.l_type == 'PhotoSmoothFirstLoss':
+            self.loss = PhotoSmoothFirstLoss(args)
+        else:
+            raise ValueError('Unrecognized loss passed to Multiscale loss')
+
+        self.multiScales = [nn.AvgPool2d(self.startScale * (2**scale), self.startScale * (2**scale)) for scale in range(self.numScales)]
+        self.multiScaleFactors = [self.startScale * (2**scale) for scale in range(self.numScales)]
+        self.loss_labels = ['MultiScale-'+self.l_type, 'EPE']
+
+    def forward(self, output, target, inputs):
+        # If output is a tuple then this is a multiscale loss where each element
+        # of the tuple is one batch worth of flow at a certain scale
+        # If output is not a tuple then why is multiscale loss being used?
+        assert type(output) is tuple
+
+        lossvalue = 0
+        epevalue = 0
+
+        # Each member of output is a batch worth of flow at a certain scale
+        for i, output_ in enumerate(output):
+            target_1 = self.multiScales[i](target[:,:,0,:,:])
+            target_2 = self.multiScales[i](target[:,:,1,:,:])
+            target_3 = self.multiScales[i](target[:,:,2,:,:])
+
+
+            scaled_inputs_1 = self.multiScales[i](inputs[:,:6,:,:])
+            scaled_inputs_2 = self.multiScales[i](inputs[:,3:9,:,:])
+            scaled_inputs_3 = self.multiScales[i](inputs[:,6:12,:,:])
+
+            epe = EPE(output_[:,:2,:,:], target_1) * self.loss_weights[i] + \
+                    EPE(output_[:,2:4,:,:], target_2) * self.loss_weights[i] + \
+                    EPE(output_[:,4:,:,:], target_3) * self.loss_weights[i]
+
+            if self.l_type == 'L1' or self.l_type == 'L2':
+                loss = self.loss(output_, target_)
+            elif self.l_type == 'PhotoL1' or self.l_type == 'BrightnessConstancyL1':
+                scaled_inputs = self.multiScales[i](inputs)
+                output_scaled_ = output_ / self.multiScaleFactors[i]
+                loss = self.loss(output_scaled_, scaled_inputs)
+            elif self.l_type == 'PhotoSmoothFirstGradAwareLoss':
+                scaled_inputs = self.multiScales[i](inputs)
+                output_scaled_ = output_ / self.multiScaleFactors[i]
+                loss = self.loss(output_scaled_[:,:2,:,:], target_1, scaled_inputs_1)[0] + \
+                    self.loss(output_scaled_[:,2:4,:,:], target_2, scaled_inputs_2)[0] + \
+                    self.loss(output_scaled_[:,4:,:,:], target_3, scaled_inputs_3)[0]
             elif self.l_type == 'PhotoSmoothFirstLoss':
                 scaled_inputs = self.multiScales[i](inputs)
                 output_scaled_ = output_ / self.multiScaleFactors[i]
