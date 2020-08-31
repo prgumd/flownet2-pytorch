@@ -286,6 +286,26 @@ class PhotoSmoothFirstGradAwareLoss(nn.Module):
         epevalue = EPE(output, target)
         return [lossvalue, loss_photo, loss_smooth, epevalue]
 
+class PhotoSmoothFirstGradAwareLossMultiLoss(nn.Module):
+    def __init__ (self, args):
+        super(PhotoSmoothFirstGradAwareLossMultiLoss, self).__init__()
+        self.args = args
+        self.loss = PhotoSmoothFirstGradAwareLoss(args)
+        self.loss_labels = self.loss.loss_labels
+        self.frame_weights = [1, 1, 1]
+
+    def forward(self, output, target, inputs):
+        num_outputs = int(output.shape[1] / 2)
+        loss = torch.zeros(len((self.loss_labels, )))
+
+        losses = []
+        for i in range(num_outputs):
+            losses.append(self.frame_weights[i] * self.loss(output[:,  2*i:2*(i+1),:,:],
+                                                            target[:,:,i,:,:],
+                                                            inputs[:,  3*i:3*(i+2),:,:]))
+        loss_sum = torch.tensor(losses).sum(dim=0)
+        return loss_sum
+
 class PhotoSmoothFirstLoss(nn.Module):
     def __init__ (self, args):
         super(PhotoSmoothFirstLoss, self).__init__()

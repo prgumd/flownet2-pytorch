@@ -374,27 +374,29 @@ class ImagesFromFolder(data.Dataset):
     return self.size * self.replicates
 
 class ImagesFlowFromFolder(data.Dataset):
-  def __init__(self, args, is_cropped, root = '/path/to/frames_and_flow/folder', iext = 'png', replicates = 1):
+  def __init__(self, args, is_cropped, root = '/path/to/frames_and_flow/folder', iext = 'png', replicates = 1,
+               images_per_sample=2, flows_per_sample=1):
     self.args = args
     self.is_cropped = is_cropped
     self.crop_size = args.crop_size
     self.render_size = args.inference_size
     self.replicates = replicates
+    self.images_per_sample = images_per_sample
+    self.flows_per_sample = flows_per_sample
 
     images = sorted( glob( join(root, '*.' + iext) ) )
-    self.flow_list = sorted( glob( join(root, '*.' + 'flo') ) )
+    flows  = sorted( glob( join(root, '*.' + 'flo') ) )
 
     self.image_list = []
-    for i in range(len(images)-1):
-        im1 = images[i]
-        im2 = images[i+1]
-        self.image_list += [ [ im1, im2 ] ]
+    for i in range(0, len(images)-self.images_per_sample):
+        self.image_list += [ [images[j] for j in range(i, i+self.images_per_sample)] ]
+
+    self.flow_list = []
+    for i in range(0, len(flows)-self.flows_per_sample):
+        self.flow_list += [ [flows[j] for j in range(i, i+self.flows_per_sample)] ]
 
     print('{} {}'.format(len(self.image_list), len( self.flow_list)))
-    assert (len(self.image_list) == len(self.flow_list))
-
-
-    self.size = len(self.image_list)
+    self.size = min(len(self.image_list), len(self.flow_list))
 
     self.frame_size = frame_utils.read_gen(self.image_list[0][0]).shape
 
@@ -407,27 +409,25 @@ class ImagesFlowFromFolder(data.Dataset):
   def __getitem__(self, index):
     index = index % self.size
 
-    img1 = frame_utils.read_gen(self.image_list[index][0])
-    img2 = frame_utils.read_gen(self.image_list[index][1])
-    flow = frame_utils.read_gen(self.flow_list[index])
+    images = [frame_utils.read_gen(image_name) for image_name in self.image_list[index]]
+    flows = [frame_utils.read_gen(image_name) for image_name in self.flow_list[index]]
 
-    images = [img1, img2]
-    image_size = img1.shape[:2]
+    image_size = images[0].shape[:2]
     if self.is_cropped:
         cropper = StaticRandomCrop(image_size, self.crop_size)
     else:
         cropper = StaticCenterCrop(image_size, self.render_size)
     images = list(map(cropper, images))
-    flow = cropper(flow)
+    flows = list(map(cropper, flows))
 
     images = np.array(images).transpose(3,0,1,2)
 
-    flow = flow.transpose(2,0,1)
+    flows = np.array(flows).transpose(3,0,1,2)
 
     images = torch.from_numpy(images.astype(np.float32))
-    flow = torch.from_numpy(flow.astype(np.float32))
+    flows = torch.from_numpy(flows.astype(np.float32))
 
-    return [images], [flow]
+    return [images], [flows]
 
   def __len__(self):
     return self.size * self.replicates

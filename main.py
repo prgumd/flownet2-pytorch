@@ -286,16 +286,16 @@ if __name__ == '__main__':
     tiler = ImageTile.get_instance(session='evaluation', max_width=args.inference_size[1]*3, scale_factor=1.0)
     def visualize_results(flow, target_flow, input_images):
         flow_image = motion_illusions.utils.flow_plot.visualize_optical_flow_rgb(flow)
-        flow_image_quiver = motion_illusions.utils.flow_plot.dense_flow_as_quiver_plot(flow, image=flow_image)
+        flow_image_quiver = motion_illusions.utils.flow_plot.dense_flow_as_quiver_plot(flow, image=flow_image, quiver_scale=1.0)
         tiler.add_image(flow_image_quiver)
 
         target_flow_image = motion_illusions.utils.flow_plot.visualize_optical_flow_rgb(target_flow)
-        target_flow_image_quiver = motion_illusions.utils.flow_plot.dense_flow_as_quiver_plot(target_flow, image=target_flow_image)
+        target_flow_image_quiver = motion_illusions.utils.flow_plot.dense_flow_as_quiver_plot(target_flow, image=target_flow_image, quiver_scale=1.0)
         tiler.add_image(target_flow_image_quiver)
 
         diff_flow = target_flow - flow
         diff_flow_image = motion_illusions.utils.flow_plot.visualize_optical_flow_rgb(diff_flow)
-        diff_flow_image_quiver = motion_illusions.utils.flow_plot.dense_flow_as_quiver_plot(diff_flow, image=diff_flow_image)
+        diff_flow_image_quiver = motion_illusions.utils.flow_plot.dense_flow_as_quiver_plot(diff_flow, image=diff_flow_image, quiver_scale=1.0)
         tiler.add_image(diff_flow_image_quiver)
 
         # Input images are float32 but with 8-bit range so we can average them like this
@@ -308,6 +308,31 @@ if __name__ == '__main__':
 
         frame = tiler.compose()
         tiler.clear_scene()
+        return frame
+
+    tiler_angular = ImageTile.get_instance(session='angular', max_width=args.inference_size[1]*3*5, scale_factor=1.0)
+    def visualize_results_angular(flow, target_flow, input_images):
+        flow_scaled = cv2.resize(flow[:,:,:2], None, fx=5.0, fy=5.0)
+        target_flow_scaled = cv2.resize(target_flow[:,:,:2], None, fx=5.0, fy=5.0)
+
+        flow_image = motion_illusions.utils.flow_plot.visualize_optical_flow_rgb(flow_scaled)
+        flow_image_quiver = motion_illusions.utils.flow_plot.dense_flow_as_quiver_plot(flow_scaled, image=flow_image, quiver_scale=30.0, scale_factor=(0.05, 0.05), angular=False)
+        tiler_angular.add_image(flow_image_quiver)
+
+        target_flow_image = motion_illusions.utils.flow_plot.visualize_optical_flow_rgb(target_flow_scaled)
+        target_flow_image_quiver = motion_illusions.utils.flow_plot.dense_flow_as_quiver_plot(target_flow_scaled, image=target_flow_image, quiver_scale=30.0, scale_factor=(0.05, 0.05), angular=False)
+        tiler_angular.add_image(target_flow_image_quiver)
+
+        #diff_flow = target_flow_scaled - flow_scaled
+
+        diff_flow = flow_scaled - target_flow_scaled
+
+        diff_flow_image = motion_illusions.utils.flow_plot.visualize_optical_flow_rgb(diff_flow)
+        diff_flow_image_quiver = motion_illusions.utils.flow_plot.dense_flow_as_quiver_plot(diff_flow, image=diff_flow_image, quiver_scale=18.0, scale_factor=(0.05, 0.05), angular=True)
+        tiler_angular.add_image(diff_flow_image_quiver)
+
+        frame = tiler_angular.compose()
+        tiler_angular.clear_scene()
         return frame
 
     # Reusable function for training and validataion
@@ -493,30 +518,33 @@ if __name__ == '__main__':
             # import IPython; IPython.embed()
             if args.save_flow or args.render_validation:
                 for i in range(args.inference_batch_size):
-                    _pflow = output[i].data.cpu().numpy().transpose(1, 2, 0)
-                    flow_utils.writeFlow( join(flow_folder, '%06d.flo'%(batch_idx * args.inference_batch_size + i)),  _pflow)
+                    _pflow_all = output[i].data.cpu().numpy().transpose(1, 2, 0)
+                    _tflow_all = target[0][i].data.cpu().numpy().transpose(1, 2, 3, 0)
 
-                    # You can comment out the plt block in visulize_flow_file() for real-time visualization
-                    # if args.inference_visualize:
-                    #     flow_utils.visulize_flow_file(
-                    #         join(flow_folder, '%06d.flo' % (batch_idx * args.inference_batch_size + i)),flow_vis_folder)
+                    for j in range(0, output.shape[1], 2):
+                        _pflow = _pflow_all[:, :, j:j+2]
+                        _tflow = _tflow_all[int(j/2), :, :, :]
 
-                    _tflow = target[i].data.cpu().numpy().squeeze().transpose(1, 2, 0)
-                    flow_utils.writeFlow( join(flow_folder, '%06d_target.flo'%(batch_idx * args.inference_batch_size + i)),  _tflow)
+                        flow_filename_base = '%06d_%06d'%(batch_idx * args.inference_batch_size + i, int(j/2))
 
-                    # You can comment out the plt block in visulize_flow_file() for real-time visualization
-                    if args.inference_visualize:
-                        # flow_utils.visulize_flow_file_and_target(
-                        #     join(flow_folder, '%06d.flo' % (batch_idx * args.inference_batch_size + i)),
-                        #     join(flow_folder, '%06d_target.flo' % (batch_idx * args.inference_batch_size + i)),
-                        #     flow_vis_folder)
+                        flow_utils.writeFlow(join(flow_folder, flow_filename_base) + '.flo', _pflow)
 
-                        flow_filename = join(flow_folder, '%06d.flo' % (batch_idx * args.inference_batch_size + i))
-                        idx = flow_filename.rfind("/") + 1
+                        # You can comment out the plt block in visulize_flow_file() for real-time visualization
+                        # if args.inference_visualize:
+                        #     flow_utils.visulize_flow_file(
+                        #         join(flow_folder, '%06d.flo' % (batch_idx * args.inference_batch_size + i)),flow_vis_folder)
 
-                        results_image = visualize_results(_pflow, _tflow, data[0][0])
-                        visualization_filename = join(flow_vis_folder, "%s-vis.png" % flow_filename[idx:-4])
-                        cv2.imwrite(visualization_filename, cv2.cvtColor(results_image, cv2.COLOR_RGB2BGR))
+                        flow_utils.writeFlow(join(flow_folder, flow_filename_base + '_target.flo'),  _tflow)
+
+                        # You can comment out the plt block in visulize_flow_file() for real-time visualization
+                        if args.inference_visualize:
+                            # flow_utils.visulize_flow_file_and_target(
+                            #     join(flow_folder, '%06d.flo' % (batch_idx * args.inference_batch_size + i)),
+                            #     join(flow_folder, '%06d_target.flo' % (batch_idx * args.inference_batch_size + i)),
+                            #     flow_vis_folder)
+
+                            results_image = visualize_results(_pflow, _tflow, data[0][i])
+                            cv2.imwrite(join(flow_vis_folder, flow_filename_base + '_vis.png'), cv2.cvtColor(results_image, cv2.COLOR_RGB2BGR))
 
             progress.set_description('Inference Averages for Epoch {}: '.format(epoch) + tools.format_dictionary_of_losses(loss_labels, np.array(statistics).mean(axis=0)))
             progress.update(1)
