@@ -14,6 +14,11 @@ from torchvision import transforms
 import numpy as np
 from PIL import Image
 
+# For debbuging
+import cv2
+import motion_illusions.utils.flow_plot as flow_plot
+from motion_illusions.utils.image_tile import ImageTile
+
 def integrate_flow_to_future(flo):
     """
     Backward warp a list of flows into a list of flow fields
@@ -111,8 +116,6 @@ class PhotoL1(nn.Module):
 
         return photometric_loss
 
-import cv2
-import motion_illusions.utils.flow_plot as flow_plot
 class BrightnessConstancyL1(nn.Module):
     def __init__(self):
         super(BrightnessConstancyL1, self).__init__()
@@ -452,8 +455,6 @@ class MultiScale(nn.Module):
 
         return [lossvalue, epevalue]
 
-
-
 class MultiScaleMultiFrame(nn.Module):
     def __init__(self, args, startScale = 4, numScales = 5, l_weight= 0.32, norm= 'L1', warp_to_future=False):
         super(MultiScaleMultiFrame,self).__init__()
@@ -488,7 +489,9 @@ class MultiScaleMultiFrame(nn.Module):
         self.multiScaleFactors = [self.startScale * (2**scale) for scale in range(self.numScales)]
         self.loss_labels = ['MultiScale-'+self.l_type, 'EPE']
 
-    def forward(self, output, target, inputs):
+        self.tiler = ImageTile.get_instance(session='losses_test', max_width=1024*3, scale_factor=4.0)
+
+    def forward(self, output, target, inputs, raw_data=None):
         # If output is a tuple then this is a multiscale loss where each element
         # of the tuple is one batch worth of flow at a certain scale
         # If output is not a tuple then why is multiscale loss being used?
@@ -517,6 +520,81 @@ class MultiScaleMultiFrame(nn.Module):
             inputs_1 = torch.cat((inputs[:, 0:3, :, :], last_input), dim=1)
             inputs_2 = torch.cat((inputs[:, 3:6, :, :], last_input), dim=1)
             inputs_3 = torch.cat((inputs[:, 6:9, :, :], last_input), dim=1)
+
+            # Let's make sure all of the results make sense
+            # Visualize the forward warped flow fields
+            # def flow_vis(flow, image=None):
+            #     flow_1 = flow.detach().cpu().numpy().transpose(1, 2, 0)
+            #     if image is None:
+            #         image = flow_plot.visualize_optical_flow_bgr(flow_1)
+            #     flow_bgr = flow_plot.dense_flow_as_quiver_plot(flow_1, image=image)
+            #     return flow_bgr
+
+            # self.tiler.add_image(flow_vis(output_maybe_warped[0][0, :2, :, :]/4))
+            # self.tiler.add_image(flow_vis(output_maybe_warped[0][0, 2:4, :, :]/4))
+            # self.tiler.add_image(flow_vis(output_maybe_warped[0][0, 4:6, :, :]/4))
+
+            # # Visualize the inputs (these will look weird since the normalization is not reversed)
+            # scaled_inputs_1 = self.multiScales[0](inputs_1)
+            # scaled_inputs_2 = self.multiScales[0](inputs_2)
+            # scaled_inputs_3 = self.multiScales[0](inputs_3)
+
+            # def add_normalized_image(image):
+            #     image_numpy = image.detach().cpu().numpy().transpose(1, 2, 0)
+            #     image_unscaled = (image_numpy * 255)
+
+            #     image_unscaled[:, :, 0] += np.min(image_unscaled[:, :, 0])
+            #     image_unscaled[:, :, 1] += np.min(image_unscaled[:, :, 1])
+            #     image_unscaled[:, :, 2] += np.min(image_unscaled[:, :, 2])
+            #     image_unnormalized = image_unscaled.astype(np.uint8)
+            #     return image_unscaled
+
+            # # unnorm1 = add_normalized_image(scaled_inputs_1[0, :3, :, :])
+            # # unnorm2 = add_normalized_image(scaled_inputs_2[0, :3, :, :])
+            # # unnorm3 = add_normalized_image(scaled_inputs_3[0, :3, :, :])
+            # # unnorm4 = add_normalized_image(scaled_inputs_3[0, 3:6, :, :])
+
+            # # self.tiler.add_image(unnorm1.astype(np.uint8))
+            # # self.tiler.add_image(unnorm2.astype(np.uint8))
+            # # self.tiler.add_image(unnorm3.astype(np.uint8))
+            # # self.tiler.add_image(unnorm4.astype(np.uint8))
+
+            # # Add the unnormalized inputs
+            # scaled_raw_data_1 = self.multiScales[0](raw_data[:, :, 0, :, :])[0]
+            # scaled_raw_data_2 = self.multiScales[0](raw_data[:, :, 1, :, :])[0]
+            # scaled_raw_data_3 = self.multiScales[0](raw_data[:, :, 2, :, :])[0]
+            # scaled_raw_data_4 = self.multiScales[0](raw_data[:, :, 3, :, :])[0]
+
+            # unnorm1 = scaled_raw_data_1.detach().cpu().numpy().transpose(1, 2, 0)
+            # unnorm2 = scaled_raw_data_2.detach().cpu().numpy().transpose(1, 2, 0)
+            # unnorm3 = scaled_raw_data_3.detach().cpu().numpy().transpose(1, 2, 0)
+            # unnorm4 = scaled_raw_data_4.detach().cpu().numpy().transpose(1, 2, 0)
+
+            # # Create averaged versions and overlay the arrows
+            # unnnorm1_4 = ((unnorm1 + unnorm4) / 2).astype(np.uint8)
+            # unnnorm2_4 = ((unnorm2 + unnorm4) / 2).astype(np.uint8)
+            # unnnorm3_4 = ((unnorm3 + unnorm4) / 2).astype(np.uint8)
+
+            # self.tiler.add_image(flow_vis(output_maybe_warped[0][0, :2, :, :]/4, image=unnnorm1_4.copy()))
+            # self.tiler.add_image(flow_vis(output_maybe_warped[0][0, 2:4, :, :]/4, image=unnnorm2_4.copy()))
+            # self.tiler.add_image(flow_vis(output_maybe_warped[0][0, 4:6, :, :]/4, image=unnnorm3_4.copy()))
+
+            # # Do the same for target flow fields
+            # target_maybe_warped_scaled_1 = self.multiScales[0](target_maybe_warped[0, :, 0, :, :])
+            # target_maybe_warped_scaled_2 = self.multiScales[0](target_maybe_warped[0, :, 1, :, :])
+            # target_maybe_warped_scaled_3 = self.multiScales[0](target_maybe_warped[0, :, 2, :, :])
+
+            # self.tiler.add_image(flow_vis(target_maybe_warped_scaled_1/4))
+            # self.tiler.add_image(flow_vis(target_maybe_warped_scaled_2/4))
+            # self.tiler.add_image(flow_vis(target_maybe_warped_scaled_3/4))
+            # self.tiler.add_image(flow_vis(target_maybe_warped_scaled_1/4, image=unnnorm1_4.copy()))
+            # self.tiler.add_image(flow_vis(target_maybe_warped_scaled_2/4, image=unnnorm2_4.copy()))
+            # self.tiler.add_image(flow_vis(target_maybe_warped_scaled_3/4, image=unnnorm3_4.copy()))
+
+            # cv2.imshow('losses_test', self.tiler.compose())
+            # self.tiler.clear_scene()
+            # cv2.waitKey(10000)
+
         else:
             output_maybe_warped = output
             target_maybe_warped = target
