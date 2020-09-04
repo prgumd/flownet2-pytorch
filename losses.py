@@ -14,6 +14,59 @@ from torchvision import transforms
 import numpy as np
 from PIL import Image
 
+def integrate_flow_to_future(flo):
+    """
+    Backward warp a list of flows into a list of flow fields
+    that all represent a warp to the endpoints of the last flow field
+    flo: [B, 2, N, H, W] flow, N is the number of flow fields
+    """
+    N = flo.shape[2]
+    integrated_flow = flo[:, :, N-1, :, :].clone()
+    forward_flows = [integrated_flow.clone()]
+    for i in range(N-2, -1, -1):
+        integrated_flow_backwarped = backward_warp(integrated_flow,
+                                                   flo[:, :, i,   :, :])
+        integrated_flow = flo[:, :, i, :, :] + integrated_flow_backwarped
+        forward_flows.insert(0, integrated_flow.clone())
+
+    forward_flows_reshaped = torch.stack(forward_flows, dim=0).permute(1, 2, 0, 3, 4)
+    return forward_flows_reshaped
+
+def backward_warp(x, flo):
+    """
+    warp an image/tensor (im2) back to im1, according to the optical flow
+    x: [B, C, H, W] (im2)
+    flo: [B, 2, H, W] flow
+    """
+    B, C, H, W = x.size()
+    # mesh grid 
+    xx = torch.arange(0, W).view(1,-1).repeat(H,1)
+    yy = torch.arange(0, H).view(-1,1).repeat(1,W)
+    xx = xx.view(1,1,H,W).repeat(B,1,1,1)
+    yy = yy.view(1,1,H,W).repeat(B,1,1,1)
+    grid = torch.cat((xx,yy),1).float()
+
+    if x.is_cuda:
+        grid = grid.cuda()
+    vgrid = Variable(grid) + flo
+
+    # scale grid to [-1,1] 
+    vgrid[:,0,:,:] = 2.0*vgrid[:,0,:,:].clone() / max(W-1,1)-1.0
+    vgrid[:,1,:,:] = 2.0*vgrid[:,1,:,:].clone() / max(H-1,1)-1.0
+
+    vgrid = vgrid.permute(0,2,3,1)        
+    output = nn.functional.grid_sample(x, vgrid)
+    mask = torch.autograd.Variable(torch.ones(x.size())).cuda()
+    mask = nn.functional.grid_sample(mask, vgrid)
+
+    # if W==128:
+        # np.save('mask.npy', mask.cpu().data.numpy())
+        # np.save('warp.npy', output.cpu().data.numpy())
+    
+    mask[mask<0.9999] = 0
+    mask[mask>0] = 1
+    
+    return output*mask
 
 def EPE(input_flow, target_flow):
     per_pixel_norm = torch.norm(target_flow-input_flow,p=2,dim=1)
@@ -51,48 +104,12 @@ class PhotoL1(nn.Module):
         prev_images = inputs[:, 0:3, :, :]
         next_images = inputs[:, 3:6, :, :]
 
-        next_images_warped = self.warp(next_images, outputs)
+        next_images_warped = backward_warp(next_images, outputs)
 
         # Result should be a batch size by one tensor
         photometric_loss = self.loss(next_images_warped, prev_images)
 
         return photometric_loss
-
-    def warp(self, x, flo):
-        """
-        warp an image/tensor (im2) back to im1, according to the optical flow
-        x: [B, C, H, W] (im2)
-        flo: [B, 2, H, W] flow
-        """
-        B, C, H, W = x.size()
-        # mesh grid 
-        xx = torch.arange(0, W).view(1,-1).repeat(H,1)
-        yy = torch.arange(0, H).view(-1,1).repeat(1,W)
-        xx = xx.view(1,1,H,W).repeat(B,1,1,1)
-        yy = yy.view(1,1,H,W).repeat(B,1,1,1)
-        grid = torch.cat((xx,yy),1).float()
-
-        if x.is_cuda:
-            grid = grid.cuda()
-        vgrid = Variable(grid) + flo
-
-        # scale grid to [-1,1] 
-        vgrid[:,0,:,:] = 2.0*vgrid[:,0,:,:].clone() / max(W-1,1)-1.0
-        vgrid[:,1,:,:] = 2.0*vgrid[:,1,:,:].clone() / max(H-1,1)-1.0
-
-        vgrid = vgrid.permute(0,2,3,1)        
-        output = nn.functional.grid_sample(x, vgrid)
-        mask = torch.autograd.Variable(torch.ones(x.size())).cuda()
-        mask = nn.functional.grid_sample(mask, vgrid)
-
-        # if W==128:
-            # np.save('mask.npy', mask.cpu().data.numpy())
-            # np.save('warp.npy', output.cpu().data.numpy())
-        
-        mask[mask<0.9999] = 0
-        mask[mask>0] = 1
-        
-        return output*mask
 
 import cv2
 import motion_illusions.utils.flow_plot as flow_plot
@@ -323,6 +340,31 @@ class PhotoSmoothFirstLoss(nn.Module):
         epevalue = EPE(output, target)
         return [lossvalue, loss_photo, loss_smooth, epevalue]
 
+class SupervisedBrightnessConstancyLoss(nn.Module):
+    def __init__ (self, args):
+        super(SupervisedBrightnessConstancyLoss, self).__init__()
+        self.args = args
+        self.w_supervised = 1.0
+        self.w_brightness = 1.0
+
+        self.loss_supervised = L1()
+        self.loss_brightness = BrightnessConstancyL1()
+
+        self.loss_labels = ['SupervisedBrightnessConstancy', 'L1', 'Brightness', 'EPE']
+
+    def forward(self, output, target, inputs, scale_factor=None):
+        if scale_factor is not None:
+            output_scaled = output / scale_factor
+        else:
+            output_scaled = output
+
+        loss_supervised = self.loss_supervised(output, target)
+        loss_brightness = self.loss_brightness(output_scaled, inputs)
+
+        lossvalue = self.w_supervised * loss_supervised + self.w_brightness * loss_brightness
+        epevalue = EPE(output, target)
+        return [lossvalue, loss_supervised, loss_brightness, epevalue]
+
 class MultiScale(nn.Module):
     def __init__(self, args, startScale = 4, numScales = 5, l_weight= 0.32, norm= 'L1'):
         super(MultiScale,self).__init__()
@@ -347,6 +389,8 @@ class MultiScale(nn.Module):
             self.loss = PhotoSmoothFirstGradAwareLoss(args)
         elif self.l_type == 'PhotoSmoothFirstLoss':
             self.loss = PhotoSmoothFirstLoss(args)
+        elif self.l_type == 'SupervisedBrightnessConstancyLoss':
+            self.loss = SupervisedBrightnessConstancyLoss(args)
         else:
             raise ValueError('Unrecognized loss passed to Multiscale loss')
 
@@ -383,6 +427,10 @@ class MultiScale(nn.Module):
                 scaled_inputs = self.multiScales[i](inputs)
                 output_scaled_ = output_ / self.multiScaleFactors[i]
                 loss = self.loss(output_scaled_, target_, scaled_inputs)[0]
+            elif self.l_type == 'SupervisedBrightnessConstancyLoss':
+                scaled_inputs = self.multiScales[i](inputs)
+                loss = self.loss(output_, target_, scaled_inputs,
+                                 scale_factor=self.multiScaleFactors[i])[0]
             else:
                 raise ValueError('Unrecognized loss passed to Multiscale loss')
 
@@ -407,7 +455,7 @@ class MultiScale(nn.Module):
 
 
 class MultiScaleMultiFrame(nn.Module):
-    def __init__(self, args, startScale = 4, numScales = 5, l_weight= 0.32, norm= 'L1'):
+    def __init__(self, args, startScale = 4, numScales = 5, l_weight= 0.32, norm= 'L1', warp_to_future=False):
         super(MultiScaleMultiFrame,self).__init__()
 
         self.startScale = startScale
@@ -415,6 +463,7 @@ class MultiScaleMultiFrame(nn.Module):
         self.loss_weights = torch.FloatTensor([(l_weight / 2 ** scale) for scale in range(self.numScales)])
         self.args = args
         self.l_type = norm
+        self.warp_to_future = warp_to_future
 
         assert(len(self.loss_weights) == self.numScales)
 
@@ -430,6 +479,8 @@ class MultiScaleMultiFrame(nn.Module):
             self.loss = PhotoSmoothFirstGradAwareLoss(args)
         elif self.l_type == 'PhotoSmoothFirstLoss':
             self.loss = PhotoSmoothFirstLoss(args)
+        elif self.l_type == 'SupervisedBrightnessConstancyLoss':
+            self.loss = SupervisedBrightnessConstancyLoss(args)
         else:
             raise ValueError('Unrecognized loss passed to Multiscale loss')
 
@@ -442,41 +493,72 @@ class MultiScaleMultiFrame(nn.Module):
         # of the tuple is one batch worth of flow at a certain scale
         # If output is not a tuple then why is multiscale loss being used?
         assert type(output) is tuple
-
         lossvalue = 0
         epevalue = 0
 
+        if self.warp_to_future:
+            output_maybe_warped = []
+            # Warp each scale
+            for output_ in output:
+                output_shaped_for_warp = torch.stack((output_[:, :2, :, :],
+                                                      output_[:, 2:4, :, :],
+                                                      output_[:, 4:6, :, :]), dim=0)
+                output_shaped_for_warp = output_shaped_for_warp.permute(1, 2, 0, 3, 4)
+                output_warped_ = integrate_flow_to_future(output_shaped_for_warp)
+                output_warped_ = torch.cat((output_warped_[:, :, 0, :, :],
+                                            output_warped_[:, :, 1, :, :],
+                                            output_warped_[:, :, 2, :, :]), dim=1)
+                output_maybe_warped.append(output_warped_)
+
+            # Reorder output_shaped_for_warp into the list representation used
+            target_maybe_warped = integrate_flow_to_future(target)
+
+            last_input = inputs[:, 9:12, :, :]
+            inputs_1 = torch.cat((inputs[:, 0:3, :, :], last_input), dim=1)
+            inputs_2 = torch.cat((inputs[:, 3:6, :, :], last_input), dim=1)
+            inputs_3 = torch.cat((inputs[:, 6:9, :, :], last_input), dim=1)
+        else:
+            output_maybe_warped = output
+            target_maybe_warped = target
+            inputs_1 = inputs[:,:6,:,:]
+            inputs_2 = inputs[:, 3:9, :, :]
+            inputs_3 = inputs[:, 6:12, :, :]
+
         # Each member of output is a batch worth of flow at a certain scale
         for i, output_ in enumerate(output):
-            target_1 = self.multiScales[i](target[:,:,0,:,:])
-            target_2 = self.multiScales[i](target[:,:,1,:,:])
-            target_3 = self.multiScales[i](target[:,:,2,:,:])
+            target_1 = self.multiScales[i](target_maybe_warped[:,:,0,:,:])
+            target_2 = self.multiScales[i](target_maybe_warped[:,:,1,:,:])
+            target_3 = self.multiScales[i](target_maybe_warped[:,:,2,:,:])
 
-
-            scaled_inputs_1 = self.multiScales[i](inputs[:,:6,:,:])
-            scaled_inputs_2 = self.multiScales[i](inputs[:,3:9,:,:])
-            scaled_inputs_3 = self.multiScales[i](inputs[:,6:12,:,:])
+            scaled_inputs_1 = self.multiScales[i](inputs_1)
+            scaled_inputs_2 = self.multiScales[i](inputs_2)
+            scaled_inputs_3 = self.multiScales[i](inputs_3)
 
             epe = EPE(output_[:,:2,:,:], target_1) * self.loss_weights[i] + \
-                    EPE(output_[:,2:4,:,:], target_2) * self.loss_weights[i] + \
-                    EPE(output_[:,4:,:,:], target_3) * self.loss_weights[i]
+                  EPE(output_[:,2:4,:,:], target_2) * self.loss_weights[i] + \
+                  EPE(output_[:,4:,:,:], target_3) * self.loss_weights[i]
 
             if self.l_type == 'L1' or self.l_type == 'L2':
-                loss = self.loss(output_, target_)
+                raise ValueError('L1 and L2 not supported in MultiScaleMultiFrame')
             elif self.l_type == 'PhotoL1' or self.l_type == 'BrightnessConstancyL1':
-                scaled_inputs = self.multiScales[i](inputs)
-                output_scaled_ = output_ / self.multiScaleFactors[i]
-                loss = self.loss(output_scaled_, scaled_inputs)
+                raise ValueError('PhotoL1 and BrightnessConstancyL1 not supported in MultiScaleMultiFrame')
+
             elif self.l_type == 'PhotoSmoothFirstGradAwareLoss':
-                scaled_inputs = self.multiScales[i](inputs)
                 output_scaled_ = output_ / self.multiScaleFactors[i]
                 loss = self.loss(output_scaled_[:,:2,:,:], target_1, scaled_inputs_1)[0] + \
-                    self.loss(output_scaled_[:,2:4,:,:], target_2, scaled_inputs_2)[0] + \
-                    self.loss(output_scaled_[:,4:,:,:], target_3, scaled_inputs_3)[0]
+                       self.loss(output_scaled_[:,2:4,:,:], target_2, scaled_inputs_2)[0] + \
+                       self.loss(output_scaled_[:,4:,:,:], target_3, scaled_inputs_3)[0]
+
             elif self.l_type == 'PhotoSmoothFirstLoss':
-                scaled_inputs = self.multiScales[i](inputs)
-                output_scaled_ = output_ / self.multiScaleFactors[i]
-                loss = self.loss(output_scaled_, target_, scaled_inputs)[0]
+                raise ValueError('PhotoSmoothFirstLoss not supported in MultiScaleMultiFrame')
+
+            elif self.l_type == 'SupervisedBrightnessConstancyLoss':
+                loss = self.loss(output_[:,:2,:,:], target_1, scaled_inputs_1,
+                                 scale_factor=self.multiScaleFactors[i])[0] + \
+                       self.loss(output_[:,2:4,:,:], target_2, scaled_inputs_2,
+                                 scale_factor=self.multiScaleFactors[i])[0] + \
+                       self.loss(output_[:,4:,:,:], target_3, scaled_inputs_3,
+                                 scale_factor=self.multiScaleFactors[i])[0]
             else:
                 raise ValueError('Unrecognized loss passed to Multiscale loss')
 

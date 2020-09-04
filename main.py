@@ -437,7 +437,7 @@ if __name__ == '__main__':
                     flow3_scaled = cv2.resize(flow[:,:,4:], None, fx=4.0, fy=4.0)
 
 
-                    target = target[0].detach().numpy()
+                    target = target[0].detach().cpu().numpy()
                     target_flow = np.transpose(target[0], (1, 2, 3, 0))
 
                     results1_image = visualize_results(flow1_scaled, target_flow[0], data[0][0])
