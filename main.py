@@ -284,18 +284,18 @@ if __name__ == '__main__':
         block.log2file(args.log_file, '{}: {}'.format(argument, value))
 
     tiler = ImageTile.get_instance(session='evaluation', max_width=args.inference_size[1]*3, scale_factor=1.0)
-    def visualize_results(flow, target_flow, input_images):
+    def visualize_results(flow, target_flow, input_images, quiver_scale=1.0):
         flow_image = motion_illusions.utils.flow_plot.visualize_optical_flow_rgb(flow)
-        flow_image_quiver = motion_illusions.utils.flow_plot.dense_flow_as_quiver_plot(flow, image=flow_image, quiver_scale=15.0)
+        flow_image_quiver = motion_illusions.utils.flow_plot.dense_flow_as_quiver_plot(flow, image=flow_image, quiver_scale=quiver_scale)
         tiler.add_image(flow_image_quiver)
 
         target_flow_image = motion_illusions.utils.flow_plot.visualize_optical_flow_rgb(target_flow)
-        target_flow_image_quiver = motion_illusions.utils.flow_plot.dense_flow_as_quiver_plot(target_flow, image=target_flow_image, quiver_scale=15.0)
+        target_flow_image_quiver = motion_illusions.utils.flow_plot.dense_flow_as_quiver_plot(target_flow, image=target_flow_image, quiver_scale=quiver_scale)
         tiler.add_image(target_flow_image_quiver)
 
         diff_flow = target_flow - flow
         diff_flow_image = motion_illusions.utils.flow_plot.visualize_optical_flow_rgb(diff_flow)
-        diff_flow_image_quiver = motion_illusions.utils.flow_plot.dense_flow_as_quiver_plot(diff_flow, image=diff_flow_image, quiver_scale=15.0)
+        diff_flow_image_quiver = motion_illusions.utils.flow_plot.dense_flow_as_quiver_plot(diff_flow, image=diff_flow_image, quiver_scale=quiver_scale)
         tiler.add_image(diff_flow_image_quiver)
 
         # Input images are float32 but with 8-bit range so we can average them like this
