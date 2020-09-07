@@ -150,7 +150,7 @@ class BrightnessConstancyL1(nn.Module):
         dI = next_intensity - prev_intensity
         grad = self.sobel(next_intensity)
 
-        expected_brightness = (grad*output).sum(axis=1, keepdim=True)
+        expected_brightness = (grad*output).sum(dim=1, keepdim=True)
         loss_values = self.loss(expected_brightness, -dI)
 
         # grad_bgr = flow_plot.visualize_optical_flow_bgr(grad[0, :, :, :].abs().cpu().numpy().transpose(1, 2, 0))
