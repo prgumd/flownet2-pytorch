@@ -519,11 +519,23 @@ if __name__ == '__main__':
             if args.save_flow or args.render_validation:
                 for i in range(args.inference_batch_size):
                     _pflow_all = output[i].data.cpu().numpy().transpose(1, 2, 0)
-                    _tflow_all = target[0][i].data.cpu().numpy().transpose(1, 2, 3, 0)
+                    _tflow_all = target[0][i].data.cpu().numpy()
+                    if len(_tflow_all.shape) == 4:
+                        _tflow_all = _tflow_all.transpose(1, 2, 3, 0)
+                    elif len(_tflow_all.shape) == 3:
+                        _tflow_all = _tflow_all.transpose(1, 2, 0)
+                    else:
+                        ValueError('Unsupported dimensions of _tflow_all')
 
                     for j in range(0, output.shape[1], 2):
                         _pflow = _pflow_all[:, :, j:j+2]
-                        _tflow = _tflow_all[int(j/2), :, :, :]
+
+                        if len(_tflow_all.shape) == 4:
+                            _tflow = _tflow_all[int(j/2), :, :, :]
+                        elif len(_tflow_all.shape) == 3:
+                            _tflow = _tflow_all
+                        else:
+                            ValueError('Unsupported dimensions of _tflow_all')
 
                         flow_filename_base = '%06d_%06d'%(batch_idx * args.inference_batch_size + i, int(j/2))
 

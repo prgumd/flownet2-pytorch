@@ -28,7 +28,8 @@ class StaticCenterCrop(object):
         return img[(self.h-self.th)//2:(self.h+self.th)//2, (self.w-self.tw)//2:(self.w+self.tw)//2,:]
 
 class MpiSintel(data.Dataset):
-    def __init__(self, args, is_cropped = False, root = '', dstype = 'clean', replicates = 1):
+    def __init__(self, args, is_cropped = False, root = '', dstype = 'clean', replicates = 1,
+                 images_per_sample=2, flows_per_sample=1):
         self.args = args
         self.is_cropped = is_cropped
         self.crop_size = args.crop_size
@@ -43,6 +44,9 @@ class MpiSintel(data.Dataset):
         self.flow_list = []
         self.image_list = []
 
+        self.images_per_sample = images_per_sample
+        self.flows_per_sample = flows_per_sample
+
         for i, file in enumerate(file_list):
             if 'test' in file:
                 # print file
@@ -53,17 +57,16 @@ class MpiSintel(data.Dataset):
             fnum_ = fbase[-11:-5]
             fnum = int(fbase[-5:-4])
 
-            img1 = join(image_root, fprefix + fnum_ + "%d"%(fnum+0) + '.png')
-            img2 = join(image_root, fprefix + fnum_ + "%d"%(fnum+1) + '.png')
-            img3 = join(image_root, fprefix + fnum_ + "%d"%(fnum+2) + '.png')
-            img4 = join(image_root, fprefix + fnum_ + "%d"%(fnum+3) + '.png')
+            images = [join(image_root, fprefix + fnum_ + "%d"%(fnum+j) + '.png') for j in range(0, self.images_per_sample)]
+            flows = [file_list[j] for j in range(0, self.flows_per_sample)]
 
-            if not isfile(img1) or not isfile(img2) or not isfile(img3) or not isfile(img4) or  \
-            not isfile(file) or not isfile(file_list[i+1]) or not isfile(file_list[i+2]):
+            if any(not isfile(image) for image in images):
+                continue
+            if any(not isfile(flow) for flow in flows):
                 continue
 
-            self.image_list += [[img1, img2, img3, img4]]
-            self.flow_list += [[file, file_list[i+1], file_list[i+2]]]
+            self.image_list += [images]
+            self.flow_list += [flows]
 
         self.size = len(self.image_list)
         self.frame_size = frame_utils.read_gen(self.image_list[0][0]).shape
@@ -80,20 +83,10 @@ class MpiSintel(data.Dataset):
 
         index = index % self.size
 
-        img1 = frame_utils.read_gen(self.image_list[index][0])
-        img2 = frame_utils.read_gen(self.image_list[index][1])
-        img3 = frame_utils.read_gen(self.image_list[index][2])
-        img4 = frame_utils.read_gen(self.image_list[index][3])
+        images = [frame_utils.read_gen(self.image_list[index][i]) for i in range(0, self.images_per_sample)]
+        flows  = [frame_utils.read_gen(self.flow_list[index][i]) for i in range(0, self.flows_per_sample)]
 
-        flow1 = frame_utils.read_gen(self.flow_list[index][0])
-        flow2 = frame_utils.read_gen(self.flow_list[index][1])
-        flow3 = frame_utils.read_gen(self.flow_list[index][2])
-
-        images = [img1, img2, img3, img4]
-        image_size = img1.shape[:2]
-
-        flows = [flow1, flow2, flow3]
-
+        image_size = images[0].shape[:2]
         if self.is_cropped:
             cropper = StaticRandomCrop(image_size, self.crop_size)
         else:
@@ -106,6 +99,9 @@ class MpiSintel(data.Dataset):
 
         images = torch.from_numpy(images.astype(np.float32))
         flows = torch.from_numpy(flows.astype(np.float32))
+
+        if self.flows_per_sample == 1:
+            flows = flows[:, 0, :, :]
 
         return [images], [flows]
 
@@ -426,6 +422,9 @@ class ImagesFlowFromFolder(data.Dataset):
 
     images = torch.from_numpy(images.astype(np.float32))
     flows = torch.from_numpy(flows.astype(np.float32))
+
+    if self.flows_per_sample == 1:
+        flows = flows[:, 0, :, :]
 
     return [images], [flows]
 
