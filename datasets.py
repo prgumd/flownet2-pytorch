@@ -109,12 +109,16 @@ class MpiSintel(data.Dataset):
         return self.size * self.replicates
 
 class MpiSintelClean(MpiSintel):
-    def __init__(self, args, is_cropped = False, root = '', replicates = 1):
-        super(MpiSintelClean, self).__init__(args, is_cropped = is_cropped, root = root, dstype = 'clean', replicates = replicates)
+    def __init__(self, args, is_cropped = False, root = '', replicates = 1,
+                 images_per_sample=2, flows_per_sample=1):
+        super(MpiSintelClean, self).__init__(args, is_cropped = is_cropped, root = root, dstype = 'clean', replicates = replicates,
+                                             images_per_sample=images_per_sample, flows_per_sample=flows_per_sample)
 
 class MpiSintelFinal(MpiSintel):
-    def __init__(self, args, is_cropped = False, root = '', replicates = 1):
-        super(MpiSintelFinal, self).__init__(args, is_cropped = is_cropped, root = root, dstype = 'final', replicates = replicates)
+    def __init__(self, args, is_cropped = False, root = '', replicates = 1,
+                 images_per_sample=2, flows_per_sample=1):
+        super(MpiSintelFinal, self).__init__(args, is_cropped = is_cropped, root = root, dstype = 'final', replicates = replicates,
+                                             images_per_sample=images_per_sample, flows_per_sample=flows_per_sample)
 
 class FlyingChairs(data.Dataset):
   def __init__(self, args, is_cropped, root = '/path/to/FlyingChairs_release/data', replicates = 1):
