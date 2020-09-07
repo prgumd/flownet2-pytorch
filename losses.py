@@ -617,6 +617,9 @@ class MultiScaleMultiFrame(nn.Module):
                   EPE(output_[:,4:,:,:], target_3) * self.loss_weights[i]
 
             if self.l_type == 'L1' or self.l_type == 'L2':
+                loss = 1 * self.loss(output_[:,:2,:,:], target_1) \
+                       + 1 * self.loss(output_[:,2:4,:,:], target_2) \
+                       + 1* self.loss(output_[:,4:,:,:], target_3)
                 raise ValueError('L1 and L2 not supported in MultiScaleMultiFrame')
             elif self.l_type == 'PhotoL1' or self.l_type == 'BrightnessConstancyL1':
                 raise ValueError('PhotoL1 and BrightnessConstancyL1 not supported in MultiScaleMultiFrame')
