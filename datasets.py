@@ -58,12 +58,14 @@ class MpiSintel(data.Dataset):
             fnum = int(fbase[-5:-4])
 
             images = [join(image_root, fprefix + fnum_ + "%d"%(fnum+j) + '.png') for j in range(0, self.images_per_sample)]
-            flows = [file_list[j] for j in range(0, self.flows_per_sample)]
 
             if any(not isfile(image) for image in images):
                 continue
-            if any(not isfile(flow) for flow in flows):
+
+            if any(not isfile(file_list[i+j]) for j in range(0, self.flows_per_sample)):
                 continue
+
+            flows = [file_list[i+j] for j in range(0, self.flows_per_sample)]
 
             self.image_list += [images]
             self.flow_list += [flows]
