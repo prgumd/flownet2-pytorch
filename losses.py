@@ -603,7 +603,7 @@ class MultiScaleMultiFrame(nn.Module):
             inputs_3 = inputs[:, 6:12, :, :]
 
         # Each member of output is a batch worth of flow at a certain scale
-        for i, output_ in enumerate(output):
+        for i, output_ in enumerate(output_maybe_warped):
             target_1 = self.multiScales[i](target_maybe_warped[:,:,0,:,:])
             target_2 = self.multiScales[i](target_maybe_warped[:,:,1,:,:])
             target_3 = self.multiScales[i](target_maybe_warped[:,:,2,:,:])
