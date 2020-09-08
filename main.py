@@ -284,7 +284,7 @@ if __name__ == '__main__':
         block.log2file(args.log_file, '{}: {}'.format(argument, value))
 
     tiler = ImageTile.get_instance(session='evaluation', max_width=args.inference_size[1]*3, scale_factor=1.0)
-    def visualize_results(flow, target_flow, input_images, quiver_scale=1.0):
+    def visualize_results(flow, target_flow, input_images=None, quiver_scale=1.0):
         flow_image = motion_illusions.utils.flow_plot.visualize_optical_flow_rgb(flow)
         flow_image_quiver = motion_illusions.utils.flow_plot.dense_flow_as_quiver_plot(flow, image=flow_image, quiver_scale=quiver_scale)
         tiler.add_image(flow_image_quiver)
@@ -298,13 +298,14 @@ if __name__ == '__main__':
         diff_flow_image_quiver = motion_illusions.utils.flow_plot.dense_flow_as_quiver_plot(diff_flow, image=diff_flow_image, quiver_scale=quiver_scale)
         tiler.add_image(diff_flow_image_quiver)
 
-        # Input images are float32 but with 8-bit range so we can average them like this
-        input_images_mean = input_images.mean(dim=1).cpu().numpy().transpose(1, 2, 0)
-        tiler.add_image(input_images_mean.astype(np.uint8))
+        if input_images is not None:
+            # Input images are float32 but with 8-bit range so we can average them like this
+            input_images_mean = input_images.mean(dim=1).cpu().numpy().transpose(1, 2, 0)
+            tiler.add_image(input_images_mean.astype(np.uint8))
 
-        for i in range(input_images.shape[1]):
-            input_image = input_images[:, i, : ,:].cpu().numpy().transpose(1, 2, 0)
-            tiler.add_image(input_image.astype(np.uint8))
+            for i in range(input_images.shape[1]):
+                input_image = input_images[:, i, : ,:].cpu().numpy().transpose(1, 2, 0)
+                tiler.add_image(input_image.astype(np.uint8))
 
         frame = tiler.compose()
         tiler.clear_scene()
@@ -441,8 +442,8 @@ if __name__ == '__main__':
                     target_flow = np.transpose(target[0], (1, 2, 3, 0))
 
                     results1_image = visualize_results(flow1_scaled, target_flow[0], data[0][0])
-                    results2_image = visualize_results(flow2_scaled, target_flow[1], data[0][0])
-                    results3_image = visualize_results(flow3_scaled, target_flow[2], data[0][0])
+                    results2_image = visualize_results(flow2_scaled, target_flow[1])
+                    results3_image = visualize_results(flow3_scaled, target_flow[2])
 
                     logger.add_image('flow1 and target', ToTensor()(results1_image), global_iteration)
                     logger.add_image('flow2 and target', ToTensor()(results2_image), global_iteration)
