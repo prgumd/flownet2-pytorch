@@ -87,6 +87,10 @@ if __name__ == '__main__':
                                     parameter_defaults={'root': './MPI-Sintel/flow/training',
                                                         'replicates': 1})
 
+    # This is a bit of hack because it is not easy to add this argument as a loss constructor parameter
+    # because it is a list
+    parser.add_argument('--frame_weights', type=float, nargs='+', default = [1.0, 1.0, 1.0], help="Error weights for each from from past to present")
+
     main_dir = os.path.dirname(os.path.realpath(__file__))
     os.chdir(main_dir)
 

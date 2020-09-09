@@ -488,6 +488,7 @@ class MultiScaleMultiFrame(nn.Module):
         self.multiScales = [nn.AvgPool2d(self.startScale * (2**scale), self.startScale * (2**scale)) for scale in range(self.numScales)]
         self.multiScaleFactors = [self.startScale * (2**scale) for scale in range(self.numScales)]
         self.loss_labels = ['MultiScale-'+self.l_type, 'EPE']
+        self.frame_weights = args.frame_weights
 
         self.tiler = ImageTile.get_instance(session='losses_test', max_width=1024*3, scale_factor=4.0)
 
@@ -617,28 +618,28 @@ class MultiScaleMultiFrame(nn.Module):
                   EPE(output_[:,4:,:,:], target_3) * self.loss_weights[i]
 
             if self.l_type == 'L1' or self.l_type == 'L2':
-                loss = 1 * self.loss(output_[:,:2,:,:], target_1) \
-                       + 1 * self.loss(output_[:,2:4,:,:], target_2) \
-                       + 1* self.loss(output_[:,4:,:,:], target_3)
+                loss = self.frame_weights[0] * self.loss(output_[:,:2,:,:], target_1) \
+                       + self.frame_weights[1] * self.loss(output_[:,2:4,:,:], target_2) \
+                       + self.frame_weights[2] * self.loss(output_[:,4:,:,:], target_3)
             elif self.l_type == 'PhotoL1' or self.l_type == 'BrightnessConstancyL1':
                 raise ValueError('PhotoL1 and BrightnessConstancyL1 not supported in MultiScaleMultiFrame')
 
             elif self.l_type == 'PhotoSmoothFirstGradAwareLoss':
                 output_scaled_ = output_ / self.multiScaleFactors[i]
-                loss = self.loss(output_scaled_[:,:2,:,:], target_1, scaled_inputs_1)[0] + \
-                       self.loss(output_scaled_[:,2:4,:,:], target_2, scaled_inputs_2)[0] + \
-                       self.loss(output_scaled_[:,4:,:,:], target_3, scaled_inputs_3)[0]
+                loss =  self.frame_weights[0] * self.loss(output_scaled_[:,:2,:,:], target_1, scaled_inputs_1)[0] + \
+                        self.frame_weights[1] * self.loss(output_scaled_[:,2:4,:,:], target_2, scaled_inputs_2)[0] + \
+                        self.frame_weights[2] * self.loss(output_scaled_[:,4:,:,:], target_3, scaled_inputs_3)[0]
 
             elif self.l_type == 'PhotoSmoothFirstLoss':
                 raise ValueError('PhotoSmoothFirstLoss not supported in MultiScaleMultiFrame')
 
             elif self.l_type == 'SupervisedBrightnessConstancyLoss':
-                loss = self.loss(output_[:,:2,:,:], target_1, scaled_inputs_1,
-                                 scale_factor=self.multiScaleFactors[i])[0] + \
-                       self.loss(output_[:,2:4,:,:], target_2, scaled_inputs_2,
-                                 scale_factor=self.multiScaleFactors[i])[0] + \
-                       self.loss(output_[:,4:,:,:], target_3, scaled_inputs_3,
-                                 scale_factor=self.multiScaleFactors[i])[0]
+                loss = self.frame_weights[0] * self.loss(output_[:,:2,:,:], target_1, scaled_inputs_1,
+                                                         scale_factor=self.multiScaleFactors[i])[0] + \
+                       self.frame_weights[1] * self.loss(output_[:,2:4,:,:], target_2, scaled_inputs_2,
+                                                         scale_factor=self.multiScaleFactors[i])[0] + \
+                       self.frame_weights[2] * self.loss(output_[:,4:,:,:], target_3, scaled_inputs_3,
+                                                         scale_factor=self.multiScaleFactors[i])[0]
             else:
                 raise ValueError('Unrecognized loss passed to Multiscale loss')
 
