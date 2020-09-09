@@ -489,6 +489,12 @@ class MultiScaleMultiFrame(nn.Module):
         self.multiScaleFactors = [self.startScale * (2**scale) for scale in range(self.numScales)]
         self.loss_labels = ['MultiScale-'+self.l_type, 'EPE']
         self.frame_weights = args.frame_weights
+        self.num_outputs = len(self.frame_weights)
+
+        if self.num_outputs == 3: pass
+        elif self.num_outputs == 2 and (self.l_type == 'L1' or self.l_type == 'L2'): pass
+        else:
+            raise ValueError('Unsupported configuration of num_outputs and l_type')
 
         self.tiler = ImageTile.get_instance(session='losses_test', max_width=1024*3, scale_factor=4.0)
 
@@ -504,14 +510,11 @@ class MultiScaleMultiFrame(nn.Module):
             output_maybe_warped = []
             # Warp each scale
             for output_ in output:
-                output_shaped_for_warp = torch.stack((output_[:, :2, :, :],
-                                                      output_[:, 2:4, :, :],
-                                                      output_[:, 4:6, :, :]), dim=0)
+                output_shaped_for_warp = torch.stack(
+                    [output_[:, i:i+2, :, :] for i in range(0, self.num_outputs*2, 2)], dim=0)
                 output_shaped_for_warp = output_shaped_for_warp.permute(1, 2, 0, 3, 4)
                 output_warped_ = integrate_flow_to_future(output_shaped_for_warp)
-                output_warped_ = torch.cat((output_warped_[:, :, 0, :, :],
-                                            output_warped_[:, :, 1, :, :],
-                                            output_warped_[:, :, 2, :, :]), dim=1)
+                output_warped_ = torch.cat([output_warped_[:, :, i, :, :] for i in range(0, self.num_outputs)], dim=1)
                 output_maybe_warped.append(output_warped_)
 
             # Reorder output_shaped_for_warp into the list representation used
@@ -605,22 +608,21 @@ class MultiScaleMultiFrame(nn.Module):
 
         # Each member of output is a batch worth of flow at a certain scale
         for i, output_ in enumerate(output_maybe_warped):
-            target_1 = self.multiScales[i](target_maybe_warped[:,:,0,:,:])
-            target_2 = self.multiScales[i](target_maybe_warped[:,:,1,:,:])
-            target_3 = self.multiScales[i](target_maybe_warped[:,:,2,:,:])
+            scaled_targets = [self.multiScales[i](target_maybe_warped[:, :, j, :, :]) for j in range(0, self.num_outputs)]
 
             scaled_inputs_1 = self.multiScales[i](inputs_1)
             scaled_inputs_2 = self.multiScales[i](inputs_2)
             scaled_inputs_3 = self.multiScales[i](inputs_3)
 
-            epe = EPE(output_[:,:2,:,:], target_1) * self.loss_weights[i] + \
-                  EPE(output_[:,2:4,:,:], target_2) * self.loss_weights[i] + \
-                  EPE(output_[:,4:,:,:], target_3) * self.loss_weights[i]
+            epe = EPE(output_[:,:2,:,:], scaled_targets[0]) * self.loss_weights[i]
+            for j in range(1, self.num_outputs):
+                epe += EPE(output_[:,2*j:2*(j+1),:,:], scaled_targets[j]) * self.loss_weights[i]
 
             if self.l_type == 'L1' or self.l_type == 'L2':
-                loss = self.frame_weights[0] * self.loss(output_[:,:2,:,:], target_1) \
-                       + self.frame_weights[1] * self.loss(output_[:,2:4,:,:], target_2) \
-                       + self.frame_weights[2] * self.loss(output_[:,4:,:,:], target_3)
+                loss = self.frame_weights[0] * self.loss(output_[:,:2,:,:], scaled_targets[0])
+                for j in range(1, self.num_outputs):
+                    loss +=  self.frame_weights[j] * self.loss(output_[:,2*j:2*(j+1),:,:], scaled_targets[j])
+
             elif self.l_type == 'PhotoL1' or self.l_type == 'BrightnessConstancyL1':
                 raise ValueError('PhotoL1 and BrightnessConstancyL1 not supported in MultiScaleMultiFrame')
 
