@@ -628,19 +628,19 @@ class MultiScaleMultiFrame(nn.Module):
 
             elif self.l_type == 'PhotoSmoothFirstGradAwareLoss':
                 output_scaled_ = output_ / self.multiScaleFactors[i]
-                loss =  self.frame_weights[0] * self.loss(output_scaled_[:,:2,:,:], target_1, scaled_inputs_1)[0] + \
-                        self.frame_weights[1] * self.loss(output_scaled_[:,2:4,:,:], target_2, scaled_inputs_2)[0] + \
-                        self.frame_weights[2] * self.loss(output_scaled_[:,4:,:,:], target_3, scaled_inputs_3)[0]
+                loss =  self.frame_weights[0] * self.loss(output_scaled_[:,:2,:,:], scaled_targets[0], scaled_inputs_1)[0] + \
+                        self.frame_weights[1] * self.loss(output_scaled_[:,2:4,:,:], scaled_targets[1], scaled_inputs_2)[0] + \
+                        self.frame_weights[2] * self.loss(output_scaled_[:,4:,:,:], scaled_targets[2], scaled_inputs_3)[0]
 
             elif self.l_type == 'PhotoSmoothFirstLoss':
                 raise ValueError('PhotoSmoothFirstLoss not supported in MultiScaleMultiFrame')
 
             elif self.l_type == 'SupervisedBrightnessConstancyLoss':
-                loss = self.frame_weights[0] * self.loss(output_[:,:2,:,:], target_1, scaled_inputs_1,
+                loss = self.frame_weights[0] * self.loss(output_[:,:2,:,:], scaled_targets[0], scaled_inputs_1,
                                                          scale_factor=self.multiScaleFactors[i])[0] + \
-                       self.frame_weights[1] * self.loss(output_[:,2:4,:,:], target_2, scaled_inputs_2,
+                       self.frame_weights[1] * self.loss(output_[:,2:4,:,:], scaled_targets[1], scaled_inputs_2,
                                                          scale_factor=self.multiScaleFactors[i])[0] + \
-                       self.frame_weights[2] * self.loss(output_[:,4:,:,:], target_3, scaled_inputs_3,
+                       self.frame_weights[2] * self.loss(output_[:,4:,:,:], scaled_targets[2], scaled_inputs_3,
                                                          scale_factor=self.multiScaleFactors[i])[0]
             else:
                 raise ValueError('Unrecognized loss passed to Multiscale loss')
